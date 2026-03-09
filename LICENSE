@@ -1,0 +1,25 @@
+Business Source License 1.1
+
+Licensor: CRE Contributors
+Licensed Work: Claude Rule Enforcer v0.3.0
+Change Date: 2030-03-01
+Change License: Apache License, Version 2.0
+
+For the full BSL-1.1 license text, see:
+https://mariadb.com/bsl11/
+
+Additional Use Grant:
+You may use the Licensed Work for your own development workflow,
+including within a commercial organisation, without a commercial
+license. This covers installing, configuring, and running CRE as
+a tool for your own use or your team's use.
+
+A commercial license is required to:
+  (a) embed, bundle, or distribute the Licensed Work (or substantial
+      portions of it) as part of another product or service;
+  (b) offer the Licensed Work as a hosted or managed service; or
+  (c) sell, sublicense, or redistribute the Licensed Work.
+
+In short: using CRE is free. Shipping CRE in your product is not.
+
+Contact: https://github.com/tech-and-ai/claude-rule-enforcer

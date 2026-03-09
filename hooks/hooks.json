@@ -1,0 +1,37 @@
+{
+  "description": "CRE policy gate hooks — Layer 1 regex + Layer 2 LLM review for Bash, Write, Edit, and instruction alignment for search/agent tools",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/gate-hook.sh",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/gate-hook.sh",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "WebSearch|WebFetch|Agent|ToolSearch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/gate-hook.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

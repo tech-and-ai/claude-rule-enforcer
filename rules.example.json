@@ -1,0 +1,48 @@
+{
+  "enabled": true,
+  "llm_review_enabled": true,
+  "alignment_check_enabled": true,
+
+  "always_block": [
+    {"pattern": ":(){ :|:& }", "reason": "Fork bomb"},
+    {"pattern": "dd of=/dev/", "reason": "Disk write to raw device"},
+    {"pattern": "mkfs", "reason": "Filesystem format"},
+    {"pattern": "> /dev/sd", "reason": "Direct disk overwrite"},
+    {"pattern": "cre_enabled", "reason": "Cannot modify gate toggle without user approval"}
+  ],
+
+  "always_allow": [
+    {"pattern": "^(ls|cat|head|tail|wc|echo|pwd|whoami|date|uptime|hostname|id|env|printenv)\\b"},
+    {"pattern": "^python3?\\s+(-(c|m|V|h)|--version|--help)"},
+    {"pattern": "^(grep|rg|find|which|file|stat|du|df|free|top|htop|ps)\\b"},
+    {"pattern": "^git (status|log|diff|branch|show|stash list|stash show|rev-parse|remote -v|tag)"},
+    {"pattern": "^(curl|wget)\\s.*(localhost|127\\.0\\.0\\.1)"},
+    {"pattern": "^(pip|npm|pnpm|yarn)\\s+(list|show|info|outdated|ls)"},
+    {"pattern": "^(jq|sed|awk|sort|uniq|cut|tr|tee|xargs|basename|dirname|realpath|readlink)\\b"},
+    {"pattern": "^(mkdir|touch|cp|mv)\\s"},
+    {"pattern": "^(node|npx|bun|deno)\\s+(-e|--eval|-v|--version|-h|--help)"},
+    {"pattern": "^(docker|podman)\\s+(ps|images|logs|inspect|stats)"},
+    {"pattern": "^(systemctl|journalctl)\\s+(status|show|is-active|is-enabled|list-units)"},
+    {"pattern": "^timeout\\s"},
+    {"pattern": "^(sqlite3|psql|mysql)\\s.*\\s*(\\.schema|\\.tables|SHOW|DESCRIBE|SELECT|EXPLAIN)"}
+  ],
+
+  "needs_llm_review": [
+    {"pattern": "ssh|scp|rsync", "context": "Remote server access — check if the user approved this connection"},
+    {"pattern": "git push", "context": "Pushing code — check if the user asked for this push"},
+    {"pattern": "systemctl.*(restart|stop|start|enable|disable)", "context": "Service management — check if the user approved this action"},
+    {"pattern": "deploy|production|prod", "context": "Production action — check if the user explicitly approved deployment"},
+    {"pattern": "rm -rf", "context": "Recursive delete — check if the user approved and target is safe"},
+    {"pattern": "\\bkill\\b|\\bkillall\\b|\\bpkill\\b", "context": "Process killing — check if the user approved"},
+    {"pattern": "crontab", "context": "Cron job modification — check if the user approved"},
+    {"pattern": "iptables|ufw|firewall", "context": "Firewall modification — check if the user approved"},
+    {"pattern": "git push.*--force(?!-with-lease)", "context": "Force push — very dangerous, suggest --force-with-lease instead"},
+    {"pattern": "git reset --hard", "context": "Hard reset destroys uncommitted work — check approval"},
+    {"pattern": "chmod -R 777", "context": "Recursive permission change — security risk"}
+  ],
+
+  "learned_rules": [],
+  "suggested_rules": [],
+  "preferences": [],
+  "fail_safe": "deny"
+}
