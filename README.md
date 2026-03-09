@@ -2,6 +2,8 @@
 
 **A PA for your AI. It learns how you work and makes your coding assistant respect it.**
 
+**Website:** [ai-cre.uk](https://ai-cre.uk) | **Demo:** [Watch the video](https://ai-cre.uk#demo) | **Patent:** GB2604445.3
+
 ![Architecture](pa_gate_infographic.png)
 
 ## The Problem
