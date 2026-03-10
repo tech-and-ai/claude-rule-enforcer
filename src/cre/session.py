@@ -176,9 +176,10 @@ def _strip_system_reminders(text):
     return cleaned if cleaned else None
 
 
-def search_recent_conversation(command, limit=10):
+def search_recent_conversation(command, limit=5):
     """Search recent conversation for permission/approval context.
     Prefers CRE's own chat log (timing-safe) over JSONL (may lag).
+    Only returns last 5 messages to prevent stale context poisoning L2.
     """
     all_results = []
     seen_content = set()
@@ -186,20 +187,20 @@ def search_recent_conversation(command, limit=10):
     # Try CRE's own chat file first (written by UserPromptSubmit hook, timing-safe)
     try:
         from .chat_logger import read_chat
-        cre_msgs = read_chat(limit=40)
-        if cre_msgs and len(cre_msgs) >= 3:
+        cre_msgs = read_chat(limit=10)
+        if cre_msgs and len(cre_msgs) >= 2:
             for msg in cre_msgs:
                 content_hash = hash(msg['content'][:200])
                 if content_hash not in seen_content:
                     seen_content.add(content_hash)
                     all_results.append(msg)
             config.log(f"CRE chat: {len(cre_msgs)} messages, {len(all_results)} unique")
-            return all_results[:30]
+            return all_results[-limit:]
     except Exception as e:
         config.log(f"CRE chat fallback: {e}")
 
     # Fallback to JSONL reader
-    live_msgs = read_live_session(limit=40)
+    live_msgs = read_live_session(limit=10)
     for msg in live_msgs:
         content_hash = hash(msg['content'][:200])
         if content_hash not in seen_content:
@@ -207,7 +208,7 @@ def search_recent_conversation(command, limit=10):
             all_results.append(msg)
 
     config.log(f"Live session: {len(live_msgs)} messages, {len(all_results)} unique")
-    return all_results[:30]
+    return all_results[-limit:]
 
 
 def scan_session_files(hours=None):
