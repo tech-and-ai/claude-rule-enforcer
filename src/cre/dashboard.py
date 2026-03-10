@@ -171,7 +171,9 @@ a { color: #d4a843; }
             <button class="btn btn-sm" id="btnGate" onclick="toggleGate()">...</button>
         </div>
         <div class="toggle-item">
-            <span class="action-label">LLM</span>
+            <span class="action-label">L2</span>
+            <span class="dot" id="l2Dot" title="L2 LLM health"></span>
+            <span id="l2Latency" style="font-size:11px;color:#6b7280"></span>
             <button class="btn btn-sm" id="btnLLM" onclick="toggleLLM()">...</button>
         </div>
         <div class="toggle-item">
@@ -307,6 +309,28 @@ function toast(msg, type='success') {
 
 let kbData = {};
 
+async function checkL2Health() {
+    try {
+        const h = await api('/api/l2health');
+        const dot = document.getElementById('l2Dot');
+        const lat = document.getElementById('l2Latency');
+        if (h.status === 'UP') {
+            dot.className = 'dot on';
+            dot.title = 'L2 UP: ' + h.model;
+            lat.textContent = h.latency_ms + 'ms';
+            lat.style.color = h.latency_ms > 3000 ? '#f59e0b' : '#6b7280';
+        } else {
+            dot.className = 'dot off';
+            dot.title = 'L2 DOWN: ' + (h.error || 'unknown');
+            lat.textContent = h.error || 'DOWN';
+            lat.style.color = '#ef4444';
+        }
+    } catch(e) {
+        const dot = document.getElementById('l2Dot');
+        if (dot) { dot.className = 'dot off'; dot.title = 'Health check failed'; }
+    }
+}
+
 async function loadAll() {
     const [status, rules, logs, kb] = await Promise.all([
         api('/api/status'), api('/api/rules'), api('/api/logs'), api('/api/kb')
@@ -322,7 +346,11 @@ async function loadAll() {
     renderPreferences();
     renderKB();
     renderImportedSummary();
+    checkL2Health();
 }
+
+// Poll L2 health every 60s
+setInterval(checkL2Health, 60000);
 
 function renderImportedSummary() {
     const el = document.getElementById('importedSummary');
@@ -1095,6 +1123,38 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 },
                 "env_vars": config.get_env_display(),
             })
+
+        elif path == "/api/l2health":
+            import time
+            import urllib.request
+            import urllib.error
+            if not config.LLM_API_KEY:
+                self._send_json({"status": "DOWN", "error": "No API key set", "latency_ms": 0})
+            else:
+                start = time.time()
+                try:
+                    payload = json.dumps({
+                        "model": config.LLM_MODEL,
+                        "messages": [{"role": "user", "content": "ping"}],
+                        "max_tokens": 1
+                    }).encode()
+                    req = urllib.request.Request(
+                        config.LLM_API_URL,
+                        data=payload,
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {config.LLM_API_KEY}"
+                        }
+                    )
+                    resp = urllib.request.urlopen(req, timeout=8)
+                    latency = int((time.time() - start) * 1000)
+                    resp.read()
+                    self._send_json({"status": "UP", "latency_ms": latency, "model": config.LLM_MODEL})
+                except urllib.error.HTTPError as e:
+                    latency = int((time.time() - start) * 1000)
+                    self._send_json({"status": "DOWN", "error": f"HTTP {e.code}", "latency_ms": latency})
+                except Exception as e:
+                    self._send_json({"status": "DOWN", "error": str(e)[:100], "latency_ms": 0})
 
         elif path == "/api/rules":
             self._send_json(config.load_rules() or {})
