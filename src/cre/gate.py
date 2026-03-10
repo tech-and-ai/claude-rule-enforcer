@@ -953,53 +953,40 @@ def _check_pattern_promotion(command, decision, rules):
 def _check_pin_override(command):
     """Check if user has provided PIN override for an L1 block.
 
-    Scans recent conversation for 'override PIN' or 'pin PIN'.
-    Creates a one-time token file consumed on use. TTL applies.
+    File-based: AI writes /tmp/cre_pin with the PIN value.
+    Hook reads and validates it. One-time use, TTL applies.
     Returns True if override is valid, False otherwise.
     """
     pin = config.OVERRIDE_PIN
     if not pin:
         return False
 
-    # Token file: one per command hash, consumed on use
-    cmd_hash = hashlib.md5(command.encode()).hexdigest()[:12]
-    token_path = f"/tmp/cre_override_{cmd_hash}"
+    token_path = "/tmp/cre_pin"
 
-    # Check if token already exists (retry after PIN entry)
-    if os.path.exists(token_path):
-        try:
-            with open(token_path) as f:
-                ts = float(f.read().strip())
-            age = time.time() - ts
-            if age <= config.OVERRIDE_TTL:
-                # Consume the token (one-time use)
-                os.remove(token_path)
-                config.log(f"PIN override consumed for: {command[:80]}")
-                config._audit(f"PIN OVERRIDE: `{command[:120]}`")
-                return True
-            else:
-                os.remove(token_path)
-                config.log(f"PIN override expired ({age:.0f}s > {config.OVERRIDE_TTL}s)")
-        except Exception:
-            pass
+    if not os.path.exists(token_path):
+        return False
 
-    # Scan conversation for PIN
     try:
-        messages = search_recent_conversation(command)
-        if not messages:
-            return False
-        # Check last 3 user messages for override phrase
-        for msg in reversed(messages[-3:]):
-            if msg.get("role") != "user":
-                continue
-            text = msg.get("content", "").lower()
-            for phrase in [f"override {pin}", f"override:{pin}", f"pin {pin}", f"pin:{pin}"]:
-                if phrase.lower() in text:
-                    # Create token for the retry
-                    with open(token_path, "w") as f:
-                        f.write(str(time.time()))
-                    config.log(f"PIN override token created for: {command[:80]}")
-                    return True
+        with open(token_path) as f:
+            content = f.read().strip()
+
+        # Format: "PIN\ntimestamp" or just "PIN"
+        lines = content.split("\n")
+        file_pin = lines[0].strip()
+        ts = float(lines[1].strip()) if len(lines) > 1 else os.path.getmtime(token_path)
+
+        age = time.time() - ts
+        if file_pin == pin and age <= config.OVERRIDE_TTL:
+            # Consume the token (one-time use)
+            os.remove(token_path)
+            config.log(f"PIN override consumed for: {command[:80]}")
+            config._audit(f"PIN OVERRIDE: `{command[:120]}`")
+            return True
+        elif age > config.OVERRIDE_TTL:
+            os.remove(token_path)
+            config.log(f"PIN override expired ({age:.0f}s > {config.OVERRIDE_TTL}s)")
+        else:
+            config.log(f"PIN mismatch")
     except Exception as e:
         config.log(f"PIN check error: {e}")
 
