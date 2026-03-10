@@ -951,44 +951,64 @@ def _check_pattern_promotion(command, decision, rules):
 
 
 def _check_pin_override(command):
-    """Check if user has provided PIN override for an L1 block.
+    """Check if the USER (not the AI) has provided a PIN override for an L1 block.
 
-    File-based: AI writes /tmp/cre_pin with the PIN value.
-    Hook reads and validates it. One-time use, TTL applies.
-    Returns True if override is valid, False otherwise.
+    Reads recent user messages from the chat log. Only accepts PINs typed
+    by the user in chat (role: "user"), never from assistant messages.
+    This prevents the AI from approving its own overrides.
+
+    Accepted formats in user messages:
+        "PIN 1234", "pin 1234", "override 1234"
+
+    One-time use: once consumed, the message won't trigger again.
+    TTL applies based on message timestamp.
     """
+    import re
+    from datetime import datetime
+
     pin = config.OVERRIDE_PIN
     if not pin:
         return False
 
-    token_path = "/tmp/cre_pin"
-
-    if not os.path.exists(token_path):
+    try:
+        from .chat_logger import read_chat
+        messages = read_chat(limit=10)
+    except Exception as e:
+        config.log(f"PIN check: cannot read chat: {e}")
         return False
 
-    try:
-        with open(token_path) as f:
-            content = f.read().strip()
+    # Scan user messages (newest first) for PIN pattern
+    pin_pattern = re.compile(r'\b(?:pin|override)\s+(\S+)', re.IGNORECASE)
 
-        # Format: "PIN\ntimestamp" or just "PIN"
-        lines = content.split("\n")
-        file_pin = lines[0].strip()
-        ts = float(lines[1].strip()) if len(lines) > 1 else os.path.getmtime(token_path)
+    for msg in reversed(messages):
+        if msg.get("role") != "user":
+            continue
 
-        age = time.time() - ts
-        if file_pin == pin and age <= config.OVERRIDE_TTL:
-            # Consume the token (one-time use)
-            os.remove(token_path)
-            config.log(f"PIN override consumed for: {command[:80]}")
-            config._audit(f"PIN OVERRIDE: `{command[:120]}`")
-            return True
-        elif age > config.OVERRIDE_TTL:
-            os.remove(token_path)
+        content = msg.get("content", "")
+        match = pin_pattern.search(content)
+        if not match:
+            continue
+
+        user_pin = match.group(1).strip()
+
+        # Check TTL from message timestamp
+        try:
+            ts = datetime.fromisoformat(msg.get("timestamp", ""))
+            age = (datetime.now(ts.tzinfo) - ts).total_seconds() if ts.tzinfo else (datetime.now() - ts).total_seconds()
+        except Exception:
+            age = 0  # If no timestamp, treat as fresh
+
+        if age > config.OVERRIDE_TTL:
             config.log(f"PIN override expired ({age:.0f}s > {config.OVERRIDE_TTL}s)")
+            return False
+
+        if user_pin == pin:
+            config.log(f"PIN override from user message for: {command[:80]}")
+            config._audit(f"PIN OVERRIDE (user-verified): `{command[:120]}`")
+            return True
         else:
-            config.log(f"PIN mismatch")
-    except Exception as e:
-        config.log(f"PIN check error: {e}")
+            config.log(f"PIN mismatch from user message")
+            return False
 
     return False
 

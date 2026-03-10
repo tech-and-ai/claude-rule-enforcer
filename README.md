@@ -172,7 +172,7 @@ L1 blocks are hard. But sometimes you need to run a blocked command. Type your P
 4. The AI retries. CRE sees the PIN, allows **this one command only**
 5. The PIN is consumed immediately. Next blocked command needs a fresh PIN entry
 
-The PIN is not a password. It's a signal that says "I, the human, approve this." No encryption, no complexity rules. Set it in `.env`:
+The PIN is verified from **user messages only** (role: "user" in the conversation). The AI cannot forge a PIN override because assistant messages are ignored. This is a signal that says "I, the human, approve this." Set it in `.env`:
 
 ```bash
 CRE_OVERRIDE_PIN=0000
