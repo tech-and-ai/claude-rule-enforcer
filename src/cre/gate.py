@@ -11,6 +11,7 @@ Protocol-agnostic: uses adapters to translate between AI coding tools
 When called as `cre gate`: reads JSON from stdin, auto-detects format, outputs decision.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -24,6 +25,7 @@ import requests
 from . import config
 from .adapters import get_adapter
 from .session import search_recent_conversation, read_live_session
+from .advice_tracker import log_advice_outcome
 
 # --- CRE.md Management ---
 
@@ -274,7 +276,7 @@ ALIGNMENT_CHECK_PROMPT = """You are an instruction alignment checker for Claude 
 RULES:
 1. If the user NAMED a specific tool or method (e.g. "use grounded", "run the research agent", "via the email skill") → the AI MUST use that tool, not a substitute. DENY substitutions.
 2. If the user did NOT name a specific tool → any reasonable tool choice is fine → ALLOW.
-3. Prerequisite steps are fine. E.g. if the user said "use the GLM-5 skill", the AI reading the skill file first is ALLOWED.
+3. Prerequisite steps are fine. E.g. if the user said "use the research skill", the AI reading the skill file first is ALLOWED.
 4. Reading files (Read, Glob, Grep) as preparation is always ALLOWED.
 5. If in doubt, ALLOW. This check is advisory, not security.
 6. RECENCY PRIORITY: The MOST RECENT user instruction is what matters. If earlier messages say one thing but the latest user message says "go" or approves a task list, the recent instruction takes precedence. Never block based on stale context.
@@ -938,85 +940,107 @@ def gate_main(adapter_name=None):
 
 
 def _check_pattern_promotion(command, decision, rules):
-    """Check if a denied command pattern should be promoted to L1.
+    """Legacy promotion check. Now handled by advice_tracker.
 
-    Reads CRE.md Active Patterns, counts similar denials in last 7 days.
-    If >=3 denials of similar pattern → creates a promotion suggestion.
+    The advice_tracker logs every PROCEED/STOP outcome.
+    When a pattern hits CRE_ADVISE_THRESHOLD PROCEEDs, it creates
+    a suggestion for the user to: promote to L1, remove, or keep.
+    See advice_tracker.py for the new flow.
     """
-    if decision != "deny":
-        return
+    pass
 
+
+def _check_pin_override(command):
+    """Check if user has provided PIN override for an L1 block.
+
+    Scans recent conversation for 'override PIN' or 'pin PIN'.
+    Creates a one-time token file consumed on use. TTL applies.
+    Returns True if override is valid, False otherwise.
+    """
+    pin = config.OVERRIDE_PIN
+    if not pin:
+        return False
+
+    # Token file: one per command hash, consumed on use
+    cmd_hash = hashlib.md5(command.encode()).hexdigest()[:12]
+    token_path = f"/tmp/cre_override_{cmd_hash}"
+
+    # Check if token already exists (retry after PIN entry)
+    if os.path.exists(token_path):
+        try:
+            with open(token_path) as f:
+                ts = float(f.read().strip())
+            age = time.time() - ts
+            if age <= config.OVERRIDE_TTL:
+                # Consume the token (one-time use)
+                os.remove(token_path)
+                config.log(f"PIN override consumed for: {command[:80]}")
+                config._audit(f"PIN OVERRIDE: `{command[:120]}`")
+                return True
+            else:
+                os.remove(token_path)
+                config.log(f"PIN override expired ({age:.0f}s > {config.OVERRIDE_TTL}s)")
+        except Exception:
+            pass
+
+    # Scan conversation for PIN
     try:
-        cre_content = _load_cre_context()
-        if not cre_content:
-            return
-
-        # Extract Active Patterns section
-        from .learner import _extract_section
-        active = _extract_section(cre_content, "## Active Patterns")
-        if not active:
-            return
-
-        # Find similar denials in last 7 days
-        cutoff = datetime.now() - timedelta(days=7)
-        deny_commands = []
-
-        for line in active.split('\n'):
-            if 'DENY' not in line.upper():
+        messages = search_recent_conversation(command)
+        if not messages:
+            return False
+        # Check last 3 user messages for override phrase
+        for msg in reversed(messages[-3:]):
+            if msg.get("role") != "user":
                 continue
-            # Parse: - [YYYY-MM-DD HH:MM] DENY (bash): `cmd` — reason
-            try:
-                ts_str = line.split('[')[1].split(']')[0]
-                entry_time = datetime.strptime(ts_str, "%Y-%m-%d %H:%M")
-                if entry_time < cutoff:
-                    continue
-                # Extract command from backticks
-                if '`' in line:
-                    cmd = line.split('`')[1]
-                    deny_commands.append(cmd)
-            except (ValueError, IndexError):
-                continue
-
-        if len(deny_commands) < 3:
-            return
-
-        # Try to find a common pattern among denied commands
-        # Simple approach: find common prefix words
-        words_lists = [cmd.split()[:2] for cmd in deny_commands]
-        if not words_lists:
-            return
-
-        # Use the first word(s) as pattern base
-        common = words_lists[0][0] if words_lists[0] else None
-        if not common:
-            return
-
-        # Count how many denied commands start with this word
-        matching = [cmd for cmd in deny_commands if cmd.startswith(common)]
-        if len(matching) < 3:
-            return
-
-        # Check if this pattern already exists in L1
-        pattern = re.escape(common)
-        for rule in rules.get("always_block", []):
-            try:
-                if re.search(rule.get("pattern", ""), common):
-                    return  # Already blocked
-            except re.error:
-                pass
-
-        # Create promotion suggestion
-        from .learner import create_promotion_suggestion
-        create_promotion_suggestion(
-            pattern=pattern,
-            command_examples=matching[:5],
-            deny_count=len(matching),
-            suggested_category="always_block"
-        )
-        config.log(f"Pattern promotion: {pattern} ({len(matching)} denials)")
-
+            text = msg.get("content", "").lower()
+            for phrase in [f"override {pin}", f"override:{pin}", f"pin {pin}", f"pin:{pin}"]:
+                if phrase.lower() in text:
+                    # Create token for the retry
+                    with open(token_path, "w") as f:
+                        f.write(str(time.time()))
+                    config.log(f"PIN override token created for: {command[:80]}")
+                    return True
     except Exception as e:
-        config.log(f"Pattern promotion error: {e}")
+        config.log(f"PIN check error: {e}")
+
+    return False
+
+
+def _check_advise_acknowledgement(command, advice_reason):
+    """Check if AI has acknowledged an ADVISE by looking for a retry.
+
+    On first ADVISE: block with message, AI must decide.
+    On retry (same command within 60s): check conversation for PROCEED/STOP.
+    Returns: ("proceed", reason) or ("stop", reason) or None (first time, block it).
+    """
+    cmd_hash = hashlib.md5(command.encode()).hexdigest()[:12]
+    advise_path = f"/tmp/cre_advise_{cmd_hash}"
+
+    # Check if this is a retry (advise file exists)
+    if os.path.exists(advise_path):
+        try:
+            with open(advise_path) as f:
+                data = json.load(f)
+            age = time.time() - data.get("time", 0)
+            if age > 60:
+                os.remove(advise_path)
+                return None  # Expired, treat as first time
+
+            # It's a retry — the AI is proceeding despite advice
+            os.remove(advise_path)
+            log_advice_outcome(command, advice_reason, "proceed")
+            return "proceed", advice_reason
+        except Exception:
+            pass
+
+    # First time: create advise file and block
+    try:
+        with open(advise_path, "w") as f:
+            json.dump({"time": time.time(), "advice": advice_reason[:200]}, f)
+    except Exception:
+        pass
+
+    return None  # Signal: block with ADVISE message
 
 
 def _evaluate_bash(normalized, rules):
@@ -1027,24 +1051,35 @@ def _evaluate_bash(normalized, rules):
 
     config.log(f"Checking: {command[:200]}")
 
-    # L1: Regex
+    # L1: Regex (flat rules — allow or block, no escalation)
     decision, reason = regex_check(command, rules)
 
     if decision == "allow":
         config.log(f"L1 ALLOW: {reason}")
-        return "allow", reason
-
-    if decision == "deny":
+        # Fall through to L2 for advisory/context
+    elif decision == "deny":
+        # L1 hard block — check PIN override
+        if _check_pin_override(command):
+            config.log(f"L1 DENY overridden by PIN: {reason}")
+            _log_enforcement_event(command, "allow", f"L1 DENY overridden by PIN: {reason}", tool_type="bash")
+            return "allow", f"PIN override: {reason}"
         config.log(f"L1 DENY: {reason}")
         return "deny", reason
+    elif decision == "review":
+        # Legacy needs_llm_review — treat as L1 allow, let L2 advise
+        config.log(f"L1 no block (legacy review pattern), passing to L2")
+        decision = "allow"
 
-    # L2: LLM review (two-phase: L2a permission check → L2b intent check)
+    # L2: LLM review (advisory — CONTEXT, ADVISE, or ALLOW)
     if not rules.get("llm_review_enabled", True):
-        config.log(f"L2 SKIP (disabled), WARN: {reason}")
-        return "allow", f"⚠ L2 skipped (LLM disabled): {reason}"
+        config.log(f"L2 SKIP (disabled)")
+        return "allow", reason if decision == "allow" else f"L2 disabled: {reason}"
+
+    if not config.LLM_API_KEY:
+        config.log(f"L2 SKIP (no API key)")
+        return "allow", reason if decision == "allow" else "L2 skipped (no API key)"
 
     # L2a: Permission check — does a standing rule cover this command?
-    # No conversation context, just the command vs standing preferences.
     config.log(f"L2a permission check: {command[:120]}")
     perm_decision, perm_reason = call_permission_check(command, reason, rules)
     config.log(f"L2a: {perm_decision} — {perm_reason}")
@@ -1054,14 +1089,21 @@ def _evaluate_bash(normalized, rules):
         return "allow", f"Standing permission: {perm_reason}"
 
     if perm_decision == "DENY":
-        _log_enforcement_event(command, "warn", f"L2a: {perm_reason}", tool_type="bash")
-        _check_pattern_promotion(command, "deny", rules)
-        config.log(f"L2a WARN (advisory): {perm_reason}")
-        return "allow", f"⚠ L2a warning: {perm_reason}"
+        # L2 DENY = ADVISE (L2 never blocks, it advises)
+        _log_enforcement_event(command, "advise", f"L2a ADVISE: {perm_reason}", tool_type="bash")
+        config.log(f"L2a ADVISE: {perm_reason}")
 
-    # L2a returned NONE — no standing rule covers this. Fall through to L2b.
-    # L2b: Intent check — did the user ask for this command?
-    # Conversation context only, no preferences.
+        # Forced acknowledgement — block until AI decides
+        ack = _check_advise_acknowledgement(command, perm_reason)
+        if ack is None:
+            # First time: hard stop, AI must acknowledge
+            return "deny", f"ADVISE: {perm_reason}. Acknowledge: retry to PROCEED, or do not retry to STOP."
+        else:
+            # AI retried = PROCEED (logged by _check_advise_acknowledgement)
+            config.log(f"L2a ADVISE acknowledged (PROCEED): {perm_reason}")
+            return "allow", f"⚠ Proceeded despite advice: {perm_reason}"
+
+    # L2a returned NONE — no standing rule. Fall through to L2b.
     config.log(f"L2b intent check (L2a had no opinion)")
     memory_results = search_recent_conversation(command)
     config.log(f"L2b context: {len(memory_results)} messages")
@@ -1071,18 +1113,19 @@ def _evaluate_bash(normalized, rules):
 
     learn_from_conversation(command, memory_results, rules)
 
-    # Log L2b decision to CRE.md (still records deny for audit trail)
     _log_enforcement_event(command, llm_decision.lower(), f"L2b: {llm_reason}", tool_type="bash")
-
-    # Check for pattern promotion (repeated denials → L1 suggestion)
-    if llm_decision == "DENY":
-        _check_pattern_promotion(command, "deny", rules)
 
     if llm_decision == "ALLOW":
         return "allow", llm_reason
-    # L2 deny is advisory — warn but allow
-    config.log(f"L2b WARN (advisory): {llm_reason}")
-    return "allow", f"⚠ L2b warning: {llm_reason}"
+
+    # L2b DENY = ADVISE with forced acknowledgement
+    config.log(f"L2b ADVISE: {llm_reason}")
+    ack = _check_advise_acknowledgement(command, llm_reason)
+    if ack is None:
+        return "deny", f"ADVISE: {llm_reason}. Acknowledge: retry to PROCEED, or do not retry to STOP."
+    else:
+        config.log(f"L2b ADVISE acknowledged (PROCEED): {llm_reason}")
+        return "allow", f"⚠ Proceeded despite advice: {llm_reason}"
 
 
 def _evaluate_write_edit(normalized, rules):
@@ -1112,9 +1155,15 @@ def _evaluate_write_edit(normalized, rules):
         return "allow", f"Standing permission: {perm_reason}"
 
     if perm_decision == "DENY":
-        _log_enforcement_event(file_path, "warn", f"L2a: {perm_reason}", tool_type=tool_type)
-        config.log(f"L2a WARN (advisory): {perm_reason}")
-        return "allow", f"⚠ L2a warning: {perm_reason}"
+        # L2 DENY = ADVISE with forced acknowledgement
+        _log_enforcement_event(file_path, "advise", f"L2a ADVISE: {perm_reason}", tool_type=tool_type)
+        config.log(f"L2a ADVISE: {perm_reason}")
+        ack = _check_advise_acknowledgement(f"{tool_type} {file_path}", perm_reason)
+        if ack is None:
+            return "deny", f"ADVISE: {perm_reason}. Acknowledge: retry to PROCEED, or do not retry to STOP."
+        else:
+            config.log(f"L2a ADVISE acknowledged (PROCEED): {perm_reason}")
+            return "allow", f"⚠ Proceeded despite advice: {perm_reason}"
 
     # L2a returned NONE — fall through to L2b intent check
     config.log(f"L2b intent check (L2a had no opinion)")
@@ -1128,11 +1177,16 @@ def _evaluate_write_edit(normalized, rules):
     )
     config.log(f"L2b intent: {llm_decision} — {llm_reason}")
 
-    # Log L2b decision to CRE.md (still records deny for audit trail)
     _log_enforcement_event(file_path, llm_decision.lower(), f"L2b: {llm_reason}", tool_type=tool_type)
 
     if llm_decision == "ALLOW":
         return "allow", llm_reason
-    # L2 deny is advisory — warn but allow
-    config.log(f"L2b WARN (advisory): {llm_reason}")
-    return "allow", f"⚠ L2b warning: {llm_reason}"
+
+    # L2b DENY = ADVISE with forced acknowledgement
+    config.log(f"L2b ADVISE: {llm_reason}")
+    ack = _check_advise_acknowledgement(f"{tool_type} {file_path}", llm_reason)
+    if ack is None:
+        return "deny", f"ADVISE: {llm_reason}. Acknowledge: retry to PROCEED, or do not retry to STOP."
+    else:
+        config.log(f"L2b ADVISE acknowledged (PROCEED): {llm_reason}")
+        return "allow", f"⚠ Proceeded despite advice: {llm_reason}"

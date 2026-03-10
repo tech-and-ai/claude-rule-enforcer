@@ -32,7 +32,7 @@ CRE isn't just a security gate. It's a **behavioural adapter** that learns how y
 |---------------------------|-----|
 | "Block dangerous commands" | "Did the user actually ask for this?" |
 | Static regex patterns | Learns from your conversations |
-| Binary allow/deny | Understands context: discussion vs instruction |
+| Binary allow/deny | L1 blocks, L2 advises, PIN to override |
 | You write every rule | Suggests rules from your history |
 | Forgets between sessions | Remembers every correction you've made |
 
@@ -95,7 +95,7 @@ That's it. Every action your AI attempts now goes through the enforcer.
 
 ```bash
 cre init                              # Auto-configure hooks
-cre status                            # Show gate status, rule counts, config
+cre status                            # Show gate status, rule counts, L2 health
 cre enable / cre disable              # Toggle gate on/off
 cre test "ssh root@prod"              # Test a command against rules
 cre gate                              # Hook entry point (stdin/stdout JSON)
@@ -128,26 +128,27 @@ User prompt → AI coding assistant → wants to take an action
                       │  ┌──── Layer 1: Fast Gate ────┐        │
                       │  │ • always_block (deny)       │        │
                       │  │ • always_allow (pass)       │  <10ms │
-                      │  │ • needs_review → escalate   │        │
+                      │  │ • always_block (PIN override)│        │
                       │  └────────┬────────────────────┘        │
                       │           │                              │
                       │  ┌────────▼────────────────────┐        │
-                      │  │ Layer 2: Context Review      │        │
-                      │  │ • Reads live conversation    │  2-5s  │
-                      │  │ • Checks intent vs action    │        │
-                      │  │ • Applies learned preferences│        │
+                      │  │ Layer 2: Live PA (advisory)  │        │
+                      │  │ • CONTEXT: injects info      │  2-5s  │
+                      │  │ • ADVISE: forced ack required│        │
+                      │  │ • Tracks ignored advice      │        │
                       │  └────────┬────────────────────┘        │
                       │           │                              │
                       │  ┌────────▼────────────────────┐        │
-                      │  │ Learning Engine              │        │
-                      │  │ • Detects patterns           │        │
-                      │  │ • Suggests rules + evidence  │        │
-                      │  │ • Feeds back into gate       │        │
+                      │  │ You Decide (UI)              │        │
+                      │  │ • Ignored 5x? You choose:    │        │
+                      │  │ • [Promote L1] [Remove] [Keep]│       │
                       │  └─────────────────────────────┘        │
                       └─────────────────────────────────────────┘
                                           │
-                                  ALLOW → action proceeds
-                                  DENY  → action blocked with reason
+                                  ALLOW   → action proceeds
+                                  DENY    → L1 hard block (PIN to override)
+                                  ADVISE  → AI must acknowledge (PROCEED or STOP)
+                                  CONTEXT → useful info injected, no stop
 ```
 
 ### Layer 1: Fast Gate (< 10ms)
@@ -156,20 +157,74 @@ Instant regex matching. Handles 90%+ of actions with zero latency:
 
 | Category | Action | Example |
 |----------|--------|---------|
-| `always_block` | Instant deny | Fork bombs, `mkfs`, raw disk writes |
+| `always_block` | Hard deny | Fork bombs, `mkfs`, raw disk writes, SSH to prod |
 | `always_allow` | Instant allow | `ls`, `git status`, `grep`, `jq` |
-| `needs_llm_review` | Escalate to L2 | `ssh`, `git push`, `rm -rf`, service management |
 
-### Layer 2: Context Review (2-5s)
+L1 is flat. Two lists. Allow or block. No escalation, no thinking, no LLM.
 
-This is where CRE becomes a PA. Layer 2 reads the live conversation and decides based on intent:
+### PIN Override (L1 only)
 
-- User said "let's discuss auth" → AI writes code → **DENY** (discussing, not building)
-- User said "yes, push it" → AI runs `git push` → **ALLOW** (explicit approval)
-- User asked "can you SSH in?" → AI runs `ssh` → **DENY** (question ≠ permission)
-- User said "go ahead and deploy" → AI runs deploy script → **ALLOW** (clear instruction)
+L1 blocks are hard. But sometimes you need to run a blocked command. Type your PIN in chat to signal approval:
 
-Layer 2 also enforces **learned preferences**, things you've corrected before get injected into the review prompt so the AI can't repeat the same mistakes.
+1. L1 blocks the command (e.g. SSH to production)
+2. The AI tells you it was blocked
+3. You type `override 0000` (your chosen PIN) in chat
+4. The AI retries. CRE sees the PIN, allows **this one command only**
+5. The PIN is consumed immediately. Next blocked command needs a fresh PIN entry
+
+The PIN is not a password. It's a signal that says "I, the human, approve this." No encryption, no complexity rules. Set it in `.env`:
+
+```bash
+CRE_OVERRIDE_PIN=0000
+CRE_OVERRIDE_TTL=60   # seconds before it expires (default: 60)
+```
+
+### Layer 2: Live PA (2-5s)
+
+L2 is your AI's personal assistant. It reads the live conversation and responds in two ways:
+
+**CONTEXT** (no stop, just injects useful info):
+- AI is about to SSH somewhere. L2 injects: "Server X: port 2201, password is in servers.md"
+- AI is sending an email. L2 injects: "Use john@example.com, not the old address"
+
+**ADVISE** (hard stop, AI must acknowledge):
+- User said "let's discuss auth" but AI writes code. L2: **ADVISE** "discussing, not building"
+- User asked "can you SSH in?" L2: **ADVISE** "question is not permission"
+- User said "yes, push it". L2: **ALLOW** (explicit approval, no stop)
+
+When L2 returns ADVISE, the command is blocked until the AI explicitly acknowledges. The AI must either:
+- **Retry** the command (logged as PROCEED, advice ignored)
+- **Not retry** (logged as STOP, advice taken)
+
+There is no way to silently ignore an ADVISE. The AI must go on record.
+
+### Advice Tracking and Rule Promotion
+
+Every ADVISE outcome is tracked. When the AI ignores the same advice `CRE_ADVISE_THRESHOLD` times (default: 5), it surfaces for you:
+
+```
+IGNORED ADVICE (5x in 7 days)
+─────────────────────────────────────────
+"User hasn't approved SSH to production"
+
+Recent commands:
+  ssh root@prod-server (PROCEED)
+  ssh root@prod-server (PROCEED)
+  ssh admin@prod-server (PROCEED)
+  ...
+
+[Promote to L1]  [Remove]  [Keep]
+─────────────────────────────────────────
+```
+
+Three choices:
+- **Promote to L1**: becomes a hard block. AI can't proceed without PIN
+- **Remove**: it's noise. Stop advising on this pattern
+- **Keep**: useful nudge. Keep advising but reset the counter
+
+Over time, L2 self-prunes. Important rules move up to L1. Noise gets removed. What remains is the sweet spot of useful advice.
+
+**Why not just block everything?** An LLM reviewing another LLM's actions on limited context is useful for information, not hard enforcement. L1 handles hard blocks. L2 handles "you should probably think about this" and lets you decide what graduates.
 
 ### Learning Engine
 
@@ -289,13 +344,16 @@ Alignment defaults to **ALLOW** on failure (it's advisory, not security). Toggle
 | `CRE_LLM_API_KEY` | *(required for L2)* | API key for your LLM provider |
 | `CRE_LLM_API_URL` | `https://api.openai.com/v1/chat/completions` | Any OpenAI-compatible endpoint |
 | `CRE_LLM_MODEL` | `gpt-4o-mini` | Model for Layer 2 reviews |
-| `CRE_LLM_TIMEOUT` | `30` | Seconds before LLM timeout (deny on timeout) |
+| `CRE_LLM_TIMEOUT` | `30` | Seconds before LLM timeout |
 | `CRE_LOG_PATH` | `/tmp/cre.log` | Debug log location |
 | `CRE_RULES_PATH` | `./rules.json` | Path to rules file |
 | `CRE_SESSIONS_DIR` | *(auto-detect)* | Session files directory |
 | `CRE_SELF_LEARNING` | `false` | Enable real-time learning from conversation |
+| `CRE_OVERRIDE_PIN` | *(not set)* | PIN to override L1 blocks. It's a signal, not a password |
+| `CRE_OVERRIDE_TTL` | `60` | Seconds before a PIN override expires |
+| `CRE_ADVISE_THRESHOLD` | `5` | How many ignored ADVISEs before surfacing for your decision |
 
-**Note:** Layer 1 (regex) works with zero configuration. You only need `CRE_LLM_API_KEY` if you want Layer 2 context reviews. Without it, flagged commands are denied by default.
+**Note:** L1 (regex) works with zero configuration. L2 needs `CRE_LLM_API_KEY`. Without it, L1 still works and L2 is skipped. See `.env.example` for a complete template.
 
 ### rules.json
 
@@ -311,9 +369,7 @@ Copy `rules.example.json` to `rules.json` and customize:
   "always_allow": [
     {"pattern": "^ls\\b"}
   ],
-  "needs_llm_review": [
-    {"pattern": "ssh|scp", "context": "Remote access, check if user approved"}
-  ],
+  "needs_llm_review": [],
   "preferences": [],
   "learned_rules": [],
   "suggested_rules": [],
@@ -366,21 +422,63 @@ cre dashboard
 | **Rule Tester** | Type a command, see which rule matches |
 | **Log Viewer** | Last 100 entries, color-coded |
 | **Suggestions** | Review learned rules with evidence, approve/dismiss |
+| **Advice Tracker** | Ignored advice patterns with promote/remove/keep buttons |
 | **Preferences** | View approved preferences that feed L2 reviews |
 | **Settings** | Environment variables and their values |
 | **Quick Actions** | Toggle gate, LLM review, self-learning |
 
 ## Fail-Safe Behaviour
 
-CRE denies on failure:
+| Scenario | Result |
+|----------|--------|
+| L1 block, no PIN | **DENY** (hard block) |
+| L1 block, valid PIN | **ALLOW** (one-time, logged) |
+| L2 ADVISE, first time | **DENY** (forces acknowledgement) |
+| L2 ADVISE, AI retries | **ALLOW** (logged as PROCEED) |
+| L2 ADVISE, AI doesn't retry | Logged as STOP (advice taken) |
+| L2 LLM times out | **ALLOW** (L2 skipped, L1 still works) |
+| L2 LLM unparseable response | **ALLOW** (L2 skipped) |
+| Rules file missing | **DENY** |
+| Gate process exceeds 12s | **DENY** (SIGALRM) |
+| No API key | L1 works, L2 skipped |
 
-- LLM times out → **DENY**
-- LLM returns unparseable response → **DENY**
-- Rules file missing → **DENY**
-- Gate process exceeds 12s → SIGALRM kills it → **DENY**
-- No API key set → flagged commands **DENY** (L1 allow/block still works)
+L1 is the hard gate. L2 is your PA. If L2 fails, you lose the advice but nothing breaks.
 
-The only way an action gets through is an explicit ALLOW.
+## Diagnostics
+
+`cre status` includes an **L2 health check** that pings your LLM backend and reports whether it's reachable:
+
+```
+$ cre status
+
+Claude Rule Enforcer v0.3.0
+
+Gate:           ENABLED
+LLM Review:     ON
+
+L2 Health:
+  Status:  UP (2.9s)
+  Model:   gpt-4o-mini
+  URL:     https://api.openai.com/v1/chat/completions
+```
+
+If L2 is down, you'll see:
+
+```
+L2 Health:
+  Status:  DOWN (HTTP 401)
+  URL:     https://api.openai.com/v1/chat/completions
+  Error:   Invalid API key
+```
+
+Or:
+
+```
+L2 Health:
+  Status:  DOWN (no API key set)
+```
+
+This tells you immediately if your advisory layer is working. L1 regex enforcement continues regardless of L2 status.
 
 ## Performance
 

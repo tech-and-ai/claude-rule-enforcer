@@ -32,6 +32,14 @@ SESSIONS_DIR = os.environ.get("CRE_SESSIONS_DIR", "")
 CRE_ENABLED_PATH = os.environ.get("CRE_ENABLED_PATH", os.path.expanduser("~/.claude/cre_enabled"))
 CRE_MD_PATH = os.environ.get("CRE_MD_PATH", os.path.join(PROJECT_ROOT, "CRE.md"))
 
+# PIN override for L1 blocks
+OVERRIDE_PIN = os.environ.get("CRE_OVERRIDE_PIN", "")
+OVERRIDE_TTL = int(os.environ.get("CRE_OVERRIDE_TTL", "60"))
+
+# L2 advice tracking
+ADVISE_THRESHOLD = int(os.environ.get("CRE_ADVISE_THRESHOLD", "5"))
+ADVICE_LOG_PATH = os.environ.get("CRE_ADVICE_LOG", os.path.join(PROJECT_ROOT, "advice_tracker.json"))
+
 # Rules path: check env, then project root, then package dir
 _rules_env = os.environ.get("CRE_RULES_PATH", "")
 if _rules_env:
