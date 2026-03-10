@@ -31,7 +31,8 @@ from datetime import datetime
 from . import config
 
 # Max messages to keep in the file (trim on write to prevent unbounded growth)
-MAX_MESSAGES = 200
+# Keep small to prevent stale topics poisoning L2 context
+MAX_MESSAGES = 30
 
 
 def _cc_parent_pid():
@@ -82,9 +83,11 @@ def _instance_id():
         key = f"{project_root}:{cc_pid}"
         return hashlib.md5(key.encode()).hexdigest()[:8]
 
+    # Fallback: use project root + our own PID to avoid cross-session collisions
     if project_root:
-        return hashlib.md5(project_root.encode()).hexdigest()[:8]
-    return "default"
+        key = f"{project_root}:{os.getpid()}"
+        return hashlib.md5(key.encode()).hexdigest()[:8]
+    return hashlib.md5(str(os.getpid()).encode()).hexdigest()[:8]
 
 
 def _chat_file():
