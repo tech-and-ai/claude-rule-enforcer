@@ -1,10 +1,14 @@
 # Claude Rule Enforcer
 
-**A PA for your AI. It learns how you work and makes your coding assistant respect it.**
+[![GitHub stars](https://img.shields.io/github/stars/tech-and-ai/claude-rule-enforcer?style=social)](https://github.com/tech-and-ai/claude-rule-enforcer)
+[![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-790_passing-brightgreen.svg)](tests/)
+
+**Your AI coding agent ignores your rules under pressure. CRE makes that mechanically impossible.**
+
+![CRE Demo](cre-demo.gif)
 
 **Website:** [ai-cre.uk](https://ai-cre.uk) | **Demo:** [Watch the video](https://ai-cre.uk#demo) | **Patent:** GB2604445.3
-
-![Architecture](pa_gate_infographic.png)
 
 ## The Problem
 
