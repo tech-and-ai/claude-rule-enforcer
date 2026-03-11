@@ -31,8 +31,8 @@ from datetime import datetime
 from . import config
 
 # Max messages to keep in the file (trim on write to prevent unbounded growth)
-# Keep small to prevent stale topics poisoning L2 context
-MAX_MESSAGES = 30
+# Only recent context matters for L2. PIN override scans last 10 user messages.
+MAX_MESSAGES = 5
 
 
 def _cc_parent_pid():

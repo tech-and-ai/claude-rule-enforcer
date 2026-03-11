@@ -406,6 +406,27 @@ echo '{"tool":"bash","command":"git push"}' | cre gate --format generic
 
 Adding support for a new tool (Codex, Cursor, etc.) requires only a ~30 line adapter class.
 
+### Non-Claude Code Setup (Cursor, Codex, Windsurf, etc.)
+
+CRE auto-detects Claude Code sessions via process tree and env vars. For other tools, set `CRE_INSTANCE_ID` so L2 context stays isolated per session:
+
+```bash
+# In your tool's hook config or shell profile
+export CRE_INSTANCE_ID="cursor-project-1"
+```
+
+CRE also auto-detects Cursor and Windsurf (VS Code forks) via `VSCODE_PID`. If your tool is a VS Code fork, session isolation should work out of the box.
+
+For tools with no process detection, `CRE_INSTANCE_ID` is the escape hatch. Set it to any unique string per session. Without it, each hook invocation gets a fresh context and L2 has no conversation history to work with.
+
+The gate itself works with any tool via `--format generic`:
+
+```bash
+# Pipe any JSON to CRE, get a decision back
+echo '{"tool":"bash","command":"rm -rf /"}' | cre gate --format generic
+# {"decision": "deny", "reason": "Blocked: Recursive delete"}
+```
+
 ## Dashboard
 
 Built-in web UI for managing everything. Zero external dependencies.
