@@ -48,7 +48,7 @@ def _cc_parent_pid():
         for _ in range(10):
             with open(f"/proc/{pid}/cmdline", "rb") as f:
                 cmdline = f.read().decode("utf-8", errors="replace")
-            if "claude-code" in cmdline or "@anthropic-ai" in cmdline:
+            if any(sig in cmdline for sig in ("claude-code", "@anthropic-ai", "cursor", "Cursor", "codex", "windsurf")):
                 return str(pid)
             with open(f"/proc/{pid}/stat") as f:
                 ppid = int(f.read().split()[3])
@@ -77,7 +77,7 @@ def _instance_id():
         return explicit
 
     project_root = os.environ.get("npm_config_local_prefix", "")
-    cc_pid = _cc_parent_pid()
+    cc_pid = _cc_parent_pid() or os.environ.get("VSCODE_PID")
 
     if cc_pid and project_root:
         key = f"{project_root}:{cc_pid}"

@@ -862,7 +862,7 @@ def gate_main(adapter_name=None):
     # Absolute timeout safety
     if hasattr(signal, 'SIGALRM'):
         signal.signal(signal.SIGALRM, lambda s, f: sys.exit(2))
-        signal.alarm(12)
+        signal.alarm(20)
 
     try:
         raw = sys.stdin.read()
