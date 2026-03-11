@@ -1058,6 +1058,12 @@ def _evaluate_bash(normalized, rules):
 
     config.log(f"Checking: {command[:200]}")
 
+    # Fast path: if this is a retry after ADVISE, skip L2 entirely
+    ack = _check_advise_acknowledgement(command, "")
+    if ack is not None:
+        config.log(f"ADVISE acknowledged (PROCEED) — skipping L2: {command[:100]}")
+        return "allow", f"⚠ Proceeded despite advice: {ack[1] or 'previous advisory'}"
+
     # L1: Regex (flat rules — allow or block, no escalation)
     decision, reason = regex_check(command, rules)
 
@@ -1145,6 +1151,13 @@ def _evaluate_write_edit(normalized, rules):
         return "allow", "No file path"
 
     config.log(f"Checking {tool_type}: {file_path}")
+
+    # Fast path: if this is a retry after ADVISE, skip the LLM call entirely
+    cmd_key = f"{tool_type} {file_path}"
+    ack = _check_advise_acknowledgement(cmd_key, "")
+    if ack is not None:
+        config.log(f"ADVISE acknowledged (PROCEED) — skipping L2: {file_path}")
+        return "allow", f"⚠ Proceeded despite advice: {ack[1] or 'previous advisory'}"
 
     if not rules.get("llm_review_enabled", True):
         config.log(f"L2 SKIP (disabled), allowing {tool_type}")
