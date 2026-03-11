@@ -15,3 +15,5 @@ rules.json
 knowledge_base.json
 .pytest_cache/
 patent/
+CRE.md
+advice_tracker.json
