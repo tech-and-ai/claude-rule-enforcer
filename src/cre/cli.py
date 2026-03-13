@@ -313,9 +313,14 @@ def cmd_kb(args):
             print(f"NO MATCH — No context for: {test_input}")
 
     elif action == "sync":
-        servers_path = getattr(args, 'servers_md', None)
-        count = sync_from_servers_md(servers_md_path=servers_path)
-        print(f"Synced {count} patterns from servers.md")
+        from . import knowledge
+        servers_count = sync_from_servers_md(servers_md_path=getattr(args, 'servers_md', None))
+        claude_count = knowledge.sync_from_claude_md()
+        memory_count = knowledge.sync_from_memory_md()
+        skills_count = knowledge.sync_from_skills()
+        prefs_count = knowledge.sync_from_preferences()
+        total = servers_count + claude_count + memory_count + skills_count + prefs_count
+        print(f"Synced {total} patterns (servers:{servers_count} claude:{claude_count} memory:{memory_count} skills:{skills_count} prefs:{prefs_count})")
 
     elif action == "add":
         pattern = args.pattern
@@ -417,7 +422,10 @@ def cmd_sync(args):
     )
     print(f"  Skills:      {skills_count} patterns")
 
-    total = servers_count + claude_count + memory_count + skills_count
+    prefs_count = knowledge.sync_from_preferences()
+    print(f"  Preferences: {prefs_count} patterns")
+
+    total = servers_count + claude_count + memory_count + skills_count + prefs_count
     print(f"\nTotal: {total} patterns synced")
 
 

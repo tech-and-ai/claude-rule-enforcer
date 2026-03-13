@@ -102,6 +102,13 @@ def save_rules(rules, path=None):
         json.dump(rules, f, indent=2)
         f.write("\n")
 
+    # Auto-sync preferences to KB so L1.5 picks them up immediately
+    try:
+        from .knowledge import sync_from_preferences
+        sync_from_preferences()
+    except Exception:
+        pass  # KB sync is best-effort, don't break rule saves
+
 
 def _audit(msg):
     """Append a line to the audit log."""

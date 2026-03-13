@@ -162,6 +162,29 @@ Instant regex matching. Handles 90%+ of actions with zero latency:
 
 L1 is flat. Two lists. Allow or block. No escalation, no thinking, no LLM.
 
+### Layer 1.5: Knowledge Base Context Injection
+
+When L1 allows a command, CRE checks the knowledge base for relevant context and injects it into the AI's next response. No blocking, just helpful nudges.
+
+Sources synced into the KB (via `cre kb sync` or `cre sync`):
+
+| Source | What it extracts |
+|--------|-----------------|
+| `servers.md` | Server IPs, SSH ports, passwords, purposes |
+| `CLAUDE.md` | NEVER/ALWAYS rules, email corrections |
+| `MEMORY.md` | Project rules, workflow rules |
+| `Skills` | Skill names, triggers, key rules from SKILL.md files |
+| `Preferences` | Manual rules from `rules.json` preferences section |
+
+Example: AI runs `ssh 10.0.0.5`. L1 allows it. L1.5 injects: "Dev Server (10.0.0.5). SSH port: 22. User: deploy. Purpose: staging."
+
+KB sync runs daily at 3am via cron. Manual sync:
+
+```bash
+cre kb sync    # sync all sources into knowledge_base.json
+cre sync       # full sync (same thing)
+```
+
 ### PIN Override (L1 only)
 
 L1 blocks are hard. But sometimes you need to run a blocked command. Type your PIN in chat to signal approval:

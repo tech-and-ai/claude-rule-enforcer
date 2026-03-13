@@ -364,6 +364,73 @@ def sync_from_memory_md(memory_md_path=None, kb_path=None):
     return len(new_patterns)
 
 
+def sync_from_preferences(rules_path=None, kb_path=None):
+    """Sync manual preferences from rules.json into KB context patterns.
+
+    Preferences are user-defined rules like "when asked X, do Y" that should
+    surface as context on relevant tool calls. Extracts key terms from each
+    preference rule and creates patterns so L1.5 KB injection can match them.
+
+    Returns number of patterns added/updated.
+    """
+    from datetime import datetime
+
+    r_path = rules_path or config.RULES_PATH
+    if not os.path.exists(r_path):
+        config.log(f"rules.json not found at {r_path}")
+        return 0
+
+    with open(r_path) as f:
+        rules = json.load(f)
+
+    prefs = rules.get("preferences", [])
+    if not prefs:
+        return 0
+
+    kb = load_kb(kb_path)
+    existing = kb.get("context_patterns", [])
+
+    # Remove old synced entries
+    existing = [e for e in existing if e.get("source") != "sync_preferences"]
+
+    new_patterns = []
+
+    for p in prefs:
+        rule_text = p.get("rule", "")
+        if not rule_text or len(rule_text) < 10:
+            continue
+
+        # Extract meaningful words for pattern matching (4+ chars, lowercase)
+        words = re.findall(r'\b[a-z_]{4,}\b', rule_text.lower())
+        # Remove common stop words
+        stops = {"when", "always", "never", "must", "should", "this", "that",
+                 "with", "from", "have", "been", "will", "about", "into",
+                 "first", "before", "after", "without", "asked", "told",
+                 "check", "make", "sure", "also", "only", "just"}
+        words = [w for w in words if w not in stops]
+
+        if not words:
+            continue
+
+        # Use up to 4 key terms for matching
+        pattern = "|".join(words[:4])
+
+        new_patterns.append({
+            "pattern": pattern,
+            "context": f"[Preference] {rule_text}",
+            "category": "preference",
+            "source": "sync_preferences",
+        })
+
+    existing.extend(new_patterns)
+    kb["context_patterns"] = existing
+    kb["last_synced"] = datetime.now().isoformat()
+    save_kb(kb, kb_path)
+
+    config.log(f"KB sync: {len(new_patterns)} patterns from preferences")
+    return len(new_patterns)
+
+
 def sync_from_skills(skills_dir=None, kb_path=None):
     """Scan ~/.claude/skills/*/SKILL.md and create KB patterns for each skill.
 
