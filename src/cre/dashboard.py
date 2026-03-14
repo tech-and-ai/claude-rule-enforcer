@@ -155,6 +155,31 @@ a { color: #d4a843; }
 ::-webkit-scrollbar-track { background: #0a0e1a; }
 ::-webkit-scrollbar-thumb { background: #1e2640; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #2a3352; }
+
+/* Sessions */
+.session-card { background: #0d1220; border: 1px solid #1e2640; border-radius: 6px; padding: 10px 14px; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; transition: border-color 0.2s; }
+.session-card:hover { border-color: #2a3352; }
+.session-status { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.session-status.active { background: #4ade80; box-shadow: 0 0 6px #4ade8066; }
+.session-status.idle { background: #f59e0b; box-shadow: 0 0 4px #f59e0b44; }
+.session-status.stale { background: #4b5563; }
+.session-adapter { font-size: 10px; padding: 2px 8px; border-radius: 8px; font-weight: 500; white-space: nowrap; }
+.session-adapter.claude-code { background: #a78bfa22; color: #a78bfa; border: 1px solid #a78bfa44; }
+.session-adapter.amp { background: #22d3ee22; color: #22d3ee; border: 1px solid #22d3ee44; }
+.session-adapter.cursor { background: #f9731622; color: #f97316; border: 1px solid #f9731644; }
+.session-adapter.codex { background: #4ade8022; color: #4ade80; border: 1px solid #4ade8044; }
+.session-adapter.windsurf { background: #3b82f622; color: #3b82f6; border: 1px solid #3b82f644; }
+.session-adapter.unknown { background: #6b728022; color: #9ca3af; border: 1px solid #6b728044; }
+.session-project { color: #7dd3fc; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 12px; min-width: 120px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-meta { color: #6b7280; font-size: 12px; white-space: nowrap; display: flex; gap: 10px; }
+.session-preview { color: #9ca3af; font-size: 12px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-id { color: #4b5563; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 11px; white-space: nowrap; }
+.sessions-summary { display: flex; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.ss-item { display: flex; align-items: center; gap: 5px; }
+.ss-num { font-size: 18px; font-weight: 700; color: #d4a843; }
+.ss-label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.3px; }
+.live-proc { background: #4ade8010; border: 1px solid #4ade8033; border-radius: 6px; padding: 8px 14px; margin-bottom: 12px; }
+.live-proc-item { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -211,6 +236,7 @@ a { color: #d4a843; }
         <div class="tab" onclick="switchMainTab('suggestions')">Suggestions <span id="sugCount" style="font-size:11px;color:#f59e0b"></span></div>
         <div class="tab" onclick="switchMainTab('preferences')">Preferences</div>
         <div class="tab" onclick="switchMainTab('kb')">Knowledge Base <span id="kbCount" style="font-size:11px;color:#22d3ee"></span></div>
+        <div class="tab" onclick="switchMainTab('sessions')">Sessions <span id="sessCount" style="font-size:11px;color:#4ade80"></span></div>
         <div class="tab" onclick="switchMainTab('import')">Import</div>
         <div class="tab" onclick="switchMainTab('logs')">Logs</div>
         <div class="tab" onclick="switchMainTab('settings')">Settings</div>
@@ -237,6 +263,10 @@ a { color: #d4a843; }
         <div class="tab-content" id="main-preferences"></div>
         <!-- Knowledge Base -->
         <div class="tab-content" id="main-kb"></div>
+        <!-- Sessions -->
+        <div class="tab-content" id="main-sessions">
+            <p style="color:#6b7280">Loading sessions...</p>
+        </div>
         <!-- Import -->
         <div class="tab-content" id="main-import">
             <p style="color:#9ca3af;margin-bottom:12px">Import enforceable rules from instruction files. Scan your project or paste content manually.</p>
@@ -332,8 +362,8 @@ async function checkL2Health() {
 }
 
 async function loadAll() {
-    const [status, rules, logs, kb] = await Promise.all([
-        api('/api/status'), api('/api/rules'), api('/api/logs'), api('/api/kb')
+    const [status, rules, logs, kb, sessions] = await Promise.all([
+        api('/api/status'), api('/api/rules'), api('/api/logs'), api('/api/kb'), api('/api/sessions')
     ]);
     rulesData = rules;
     kbData = kb;
@@ -345,6 +375,7 @@ async function loadAll() {
     renderSuggestions();
     renderPreferences();
     renderKB();
+    renderSessions(sessions);
     renderImportedSummary();
     checkL2Health();
 }
@@ -472,7 +503,7 @@ function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 // --- Main tab switching ---
 function switchMainTab(tab) {
     currentMainTab = tab;
-    const allTabs = ['rules','suggestions','preferences','import','logs','settings'];
+    const allTabs = ['rules','suggestions','preferences','kb','sessions','import','logs','settings'];
     document.querySelectorAll('#mainTabs .tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('#mainTabs .tab')[allTabs.indexOf(tab)].classList.add('active');
     allTabs.forEach(t => {
@@ -846,6 +877,134 @@ async function testCmd() {
     el.style.display = 'inline-block';
 }
 
+// --- Sessions ---
+function fmtAge(mins) {
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    if (mins < 1440) return Math.floor(mins/60) + 'h ago';
+    return Math.floor(mins/1440) + 'd ago';
+}
+
+function fmtProject(p) {
+    if (!p) return 'unknown';
+    if (p.startsWith('-home-admin-projects-')) return p.slice(21);
+    if (p.startsWith('-home-admin-')) return p.slice(12);
+    if (p.startsWith('-tmp-')) return '/tmp/' + p.slice(5);
+    if (p.startsWith('-')) return p.slice(1);
+    return p;
+}
+
+function renderSessions(data) {
+    const el = document.getElementById('main-sessions');
+    if (!data || !data.sessions) { el.innerHTML = '<p style="color:#6b7280">No session data available.</p>'; return; }
+    const sm = data.summary;
+    const sessions = data.sessions;
+    const procs = data.live_processes || [];
+
+    // Count badge
+    const cntEl = document.getElementById('sessCount');
+    if (cntEl) cntEl.textContent = sm.active > 0 ? '(' + sm.active + ')' : '';
+
+    // Live processes banner
+    let html = '';
+    if (procs.length > 0) {
+        html += '<div class="live-proc"><span style="color:#4ade80;font-size:12px;font-weight:600;margin-right:10px">LIVE PROCESSES</span>';
+        procs.forEach(p => {
+            html += '<span class="live-proc-item"><span class="session-adapter ' + esc(p.adapter) + '">' + esc(p.adapter) + '</span> PID ' + p.pid + '</span>';
+        });
+        html += '</div>';
+    }
+
+    // Summary bar
+    html += '<div class="sessions-summary">';
+    html += '<div class="ss-item"><span class="ss-num">' + sm.total + '</span><span class="ss-label">Sessions</span></div>';
+    html += '<div class="ss-item"><span class="session-status active" style="display:inline-block"></span><span class="ss-num" style="color:#4ade80">' + sm.active + '</span><span class="ss-label">Active</span></div>';
+    html += '<div class="ss-item"><span class="session-status idle" style="display:inline-block"></span><span class="ss-num" style="color:#f59e0b">' + sm.idle + '</span><span class="ss-label">Idle</span></div>';
+    html += '<div class="ss-item"><span class="ss-num" style="color:#6b7280">' + sm.stale + '</span><span class="ss-label">Stale</span></div>';
+
+    // Adapter breakdown from sessions
+    if (sm.adapters) {
+        Object.entries(sm.adapters).forEach(([a, n]) => {
+            html += '<div class="ss-item"><span class="session-adapter ' + esc(a) + '">' + esc(a) + '</span><span style="color:#9ca3af;font-size:13px">' + n + '</span></div>';
+        });
+    }
+
+    // Log decision counts
+    if (sm.log_adapter_counts && Object.keys(sm.log_adapter_counts).length > 0) {
+        html += '<div class="ss-item" style="margin-left:auto"><span class="ss-label" style="margin-right:6px">Total gate calls:</span>';
+        Object.entries(sm.log_adapter_counts).forEach(([a, n]) => {
+            html += '<span class="session-adapter ' + esc(a) + '" style="margin-right:4px">' + esc(a) + ': ' + n + '</span>';
+        });
+        html += '</div>';
+    }
+    html += '</div>';
+
+    // Actions
+    html += '<div style="display:flex;gap:8px;margin-bottom:12px">';
+    html += '<button class="btn btn-sm btn-outline" onclick="loadSessions()">Refresh</button>';
+    html += '<button class="btn btn-sm btn-danger" onclick="cleanStaleSessions()">Clean Stale (&gt;24h)</button>';
+    html += '<span style="color:#6b7280;font-size:11px;line-height:28px;margin-left:auto">Auto-refresh 30s</span>';
+    html += '</div>';
+
+    if (sessions.length === 0) {
+        html += '<p style="color:#6b7280">No CRE-protected sessions found in /tmp.</p>';
+        el.innerHTML = html;
+        return;
+    }
+
+    // Session cards
+    sessions.forEach(sess => {
+        const project = fmtProject(sess.project);
+        const age = fmtAge(sess.age_minutes);
+        const preview = sess.last_message ? ((sess.last_role === 'user' ? '> ' : '') + sess.last_message) : '';
+        const sizeKB = (sess.size_bytes / 1024).toFixed(1);
+
+        html += '<div class="session-card">';
+        html += '<div class="session-status ' + esc(sess.status) + '" title="' + esc(sess.status) + '"></div>';
+        html += '<span class="session-adapter ' + esc(sess.adapter) + '">' + esc(sess.adapter) + '</span>';
+        html += '<span class="session-project" title="' + esc(sess.project || '') + '">' + esc(project) + '</span>';
+        html += '<span class="session-meta">';
+        html += '<span title="Messages">' + sess.messages + ' msgs</span>';
+        html += '<span title="Last active">' + esc(age) + '</span>';
+        html += '<span title="File size">' + sizeKB + 'KB</span>';
+        html += '</span>';
+        if (preview) {
+            html += '<span class="session-preview" title="' + esc(preview) + '">' + esc(preview) + '</span>';
+        }
+        html += '<span class="session-id" title="Instance ID">' + esc(sess.instance_id) + '</span>';
+        html += '</div>';
+    });
+
+    el.innerHTML = html;
+}
+
+async function loadSessions() {
+    try {
+        const data = await api('/api/sessions');
+        renderSessions(data);
+    } catch(e) {
+        document.getElementById('main-sessions').innerHTML = '<p style="color:#ef4444">Failed to load sessions: ' + esc(String(e)) + '</p>';
+    }
+}
+
+async function cleanStaleSessions() {
+    if (!confirm('Delete CRE chat files older than 24 hours?')) return;
+    try {
+        const r = await api('/api/sessions/clean', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+        toast('Cleaned ' + (r.cleaned || 0) + ' stale sessions');
+        await loadSessions();
+    } catch(e) {
+        toast('Clean failed: ' + e, 'error');
+    }
+}
+
+// Auto-refresh sessions every 30s when tab is active
+setInterval(async () => {
+    if (currentMainTab === 'sessions') {
+        try { const s = await api('/api/sessions'); renderSessions(s); } catch(e) {}
+    }
+}, 30000);
+
 // --- Logs ---
 async function loadLogs() {
     const logs = await api('/api/logs');
@@ -1178,6 +1337,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 lines = [f"Error reading log: {e}"]
             self._send_json({"lines": lines})
 
+        elif path == "/api/sessions":
+            self._send_json(_get_sessions())
+
         elif path == "/api/kb":
             from .knowledge import load_kb
             self._send_json(load_kb())
@@ -1293,6 +1455,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 from .learner import dismiss_suggestion
                 ok = dismiss_suggestion(data.get("id", ""))
                 self._send_json({"ok": ok})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, 400)
+
+        elif path == "/api/sessions/clean":
+            try:
+                cleaned = _clean_stale_sessions()
+                self._send_json({"ok": True, "cleaned": cleaned})
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)}, 400)
 
@@ -1424,6 +1593,198 @@ def _scan_instruction_files():
                 pass
 
     return found
+
+
+def _get_sessions():
+    """Scan all sources for CRE-protected sessions."""
+    import glob
+    import time
+
+    sessions = []
+    now = time.time()
+
+    # 1. CRE chat files — each represents a protected session instance
+    chat_files = glob.glob("/tmp/cre_chat_*.jsonl")
+    for cf in chat_files:
+        instance_id = os.path.basename(cf).replace("cre_chat_", "").replace(".jsonl", "")
+        try:
+            stat = os.stat(cf)
+            age_min = int((now - stat.st_mtime) / 60)
+
+            # Read messages and last message
+            msg_count = 0
+            last_msg = ""
+            last_role = ""
+            last_ts = ""
+            with open(cf, 'r') as f:
+                for line in f:
+                    try:
+                        d = json.loads(line)
+                        msg_count += 1
+                        last_msg = d.get("content", "")[:100]
+                        last_role = d.get("role", "")
+                        last_ts = d.get("timestamp", "")
+                    except Exception:
+                        continue
+
+            # Detect adapter type from instance ID pattern and sync file
+            sync_file = f"/tmp/cre_chat_sync_{instance_id}.json"
+            source_file = ""
+            project = ""
+
+            # Amp thread IDs start with T- (e.g. T-019ceb61-0f33-...)
+            if instance_id.startswith("T-"):
+                adapter = "amp"
+            else:
+                adapter = "unknown"
+
+            if os.path.isfile(sync_file):
+                try:
+                    with open(sync_file, 'r') as f:
+                        sync = json.load(f)
+                    source_file = sync.get("file", "")
+                    if source_file:
+                        if adapter == "unknown":
+                            adapter = "claude-code"
+                        # Extract project dir from path like
+                        # ~/.claude/projects/-home-admin-projects/UUID.jsonl
+                        parts = source_file.split("/")
+                        for i, p in enumerate(parts):
+                            if p == "projects" and i + 1 < len(parts):
+                                project = parts[i + 1]
+                                break
+                except Exception:
+                    pass
+
+            # Status based on age
+            if age_min < 5:
+                status = "active"
+            elif age_min < 60:
+                status = "idle"
+            else:
+                status = "stale"
+
+            sessions.append({
+                "instance_id": instance_id,
+                "adapter": adapter,
+                "project": project,
+                "source_file": source_file,
+                "messages": msg_count,
+                "last_active": last_ts,
+                "age_minutes": age_min,
+                "status": status,
+                "last_message": last_msg,
+                "last_role": last_role,
+                "size_bytes": stat.st_size,
+            })
+        except Exception:
+            continue
+
+    # 2. Parse CRE log for adapter usage counts
+    adapter_counts = {}
+    try:
+        with open(config.LOG_PATH) as f:
+            for line in f:
+                if "Adapter: " in line:
+                    adapter_name = line.split("Adapter: ")[-1].strip()
+                    adapter_counts[adapter_name] = adapter_counts.get(adapter_name, 0) + 1
+    except Exception:
+        pass
+
+    # 3. Detect live AI coding tool processes from /proc
+    live_processes = _detect_live_processes()
+
+    # 4. Cross-reference: sessions without sync files might be from live adapters
+    live_adapters = {p["adapter"] for p in live_processes}
+    for sess in sessions:
+        if sess["adapter"] == "unknown" and sess["status"] in ("active", "idle"):
+            # If an Amp process is running, likely an Amp session
+            if "amp" in live_adapters:
+                sess["adapter"] = "amp"
+            elif "cursor" in live_adapters:
+                sess["adapter"] = "cursor"
+            elif "codex" in live_adapters:
+                sess["adapter"] = "codex"
+            elif "windsurf" in live_adapters:
+                sess["adapter"] = "windsurf"
+
+    # Sort by age (most recent first)
+    sessions.sort(key=lambda s: s["age_minutes"])
+
+    # Summary
+    active = sum(1 for s in sessions if s["status"] == "active")
+    idle = sum(1 for s in sessions if s["status"] == "idle")
+    stale = sum(1 for s in sessions if s["status"] == "stale")
+    adapter_session_counts = {}
+    for s in sessions:
+        a = s["adapter"]
+        adapter_session_counts[a] = adapter_session_counts.get(a, 0) + 1
+
+    return {
+        "sessions": sessions,
+        "live_processes": live_processes,
+        "summary": {
+            "total": len(sessions),
+            "active": active,
+            "idle": idle,
+            "stale": stale,
+            "adapters": adapter_session_counts,
+            "log_adapter_counts": adapter_counts,
+        }
+    }
+
+
+def _detect_live_processes():
+    """Detect running AI coding tool processes via /proc."""
+    processes = []
+    seen_pids = set()
+    try:
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit():
+                continue
+            try:
+                with open(f"/proc/{pid}/cmdline", "rb") as f:
+                    cmdline = f.read().decode("utf-8", errors="replace").lower()
+                adapter = None
+                if "claude-code" in cmdline or "@anthropic-ai/claude" in cmdline:
+                    adapter = "claude-code"
+                elif "/amp" in cmdline or "\\x00amp" in cmdline or cmdline.endswith("amp"):
+                    adapter = "amp"
+                elif "cursor" in cmdline and ("node" in cmdline or "electron" in cmdline):
+                    adapter = "cursor"
+                elif "codex" in cmdline:
+                    adapter = "codex"
+                elif "windsurf" in cmdline:
+                    adapter = "windsurf"
+                if adapter and pid not in seen_pids:
+                    seen_pids.add(pid)
+                    processes.append({"pid": int(pid), "adapter": adapter})
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return processes
+
+
+def _clean_stale_sessions():
+    """Remove CRE chat files older than 24 hours."""
+    import glob
+    import time
+
+    now = time.time()
+    cutoff = 24 * 3600
+    cleaned = 0
+
+    for pattern in ["/tmp/cre_chat_*.jsonl", "/tmp/cre_chat_sync_*.json"]:
+        for f in glob.glob(pattern):
+            try:
+                if now - os.path.getmtime(f) > cutoff:
+                    os.remove(f)
+                    cleaned += 1
+            except Exception:
+                continue
+
+    return cleaned
 
 
 def _regex_test(command, rules):

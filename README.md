@@ -75,7 +75,41 @@ CRE ships as a Claude Code plugin. Add it to your local marketplace or use `--pl
 claude --plugin-dir /path/to/claude-rule-enforcer
 ```
 
-**Option C: Generic (any tool)**
+**Option C: MCP Server (any tool with MCP support)**
+
+CRE ships as an MCP server. This is the recommended integration for non-Claude-Code tools (Amp, Cursor, Windsurf, Cody, etc.). The MCP server provides the intelligence layer (rule checking, PIN override with credential injection, status). Pair it with a delegate gate for mandatory enforcement.
+
+```bash
+# Amp
+amp mcp add cre -- python -m cre.mcp_server
+
+# Claude Code
+claude mcp add cre -- python -m cre.mcp_server
+
+# Cursor / Windsurf (VS Code MCP config)
+# Add to .vscode/mcp.json:
+# {"servers": {"cre": {"command": "python", "args": ["-m", "cre.mcp_server"]}}}
+```
+
+The MCP server exposes four tools:
+
+| Tool | Purpose |
+|------|---------|
+| `cre_check` | Test a command against rules before running it |
+| `cre_override` | Submit a PIN to unlock a blocked command, returns credentials/context |
+| `cre_status` | Show gate state, rule counts, recent blocks |
+| `cre_rules` | List active rules by category |
+
+For mandatory enforcement (the AI cannot bypass this), also add a delegate gate:
+
+```bash
+# Amp delegate (blocks tool calls before execution)
+amp permissions add delegate Bash --to "/path/to/cre-gate-wrapper"
+```
+
+The delegate blocks. The MCP informs. Together they give the same experience as Claude Code's native hooks.
+
+**Option D: Generic (any tool)**
 
 Pipe JSON to `cre gate` from any hook system:
 ```bash
@@ -414,20 +448,31 @@ CRE works with any OpenAI-compatible chat completions API:
 
 ## Tool-Agnostic Design
 
-CRE's core engine is tool-agnostic. It uses **adapters** to translate between different AI coding tools and its internal decision engine:
+CRE integrates with AI coding tools through two layers:
+
+**Layer A: Enforcement (adapters)** - Mandatory gate that intercepts every tool call. The AI cannot bypass it.
 
 | Adapter | Input Format | Output Format | Exit Codes |
 |---------|-------------|---------------|------------|
 | `claude-code` | `{"tool_name":"Bash","tool_input":{"command":"..."}}` | `{}` or `hookSpecificOutput` | 0/2 |
+| `delegate` | `AGENT_TOOL_NAME` env + JSON stdin | stderr messages | 0/1/2 |
 | `generic` | `{"tool":"bash","command":"..."}` | `{"decision":"allow/deny","reason":"..."}` | 0/1 |
 
-Auto-detection works out of the box. Force a specific format with `--format`:
+The `delegate` adapter works with any tool that delegates permission decisions to external programs (Amp, and any future tool adopting this pattern). Auto-detection works out of the box. Force a specific format with `--format`:
 
 ```bash
 echo '{"tool":"bash","command":"git push"}' | cre gate --format generic
 ```
 
-Adding support for a new tool (Codex, Cursor, etc.) requires only a ~30 line adapter class.
+**Layer B: Intelligence (MCP server)** - The AI queries CRE for context, PIN validation, and credentials. Works with any MCP-compatible tool.
+
+```bash
+python -m cre.mcp_server  # Start the MCP server (stdio transport)
+```
+
+Exposes `cre_check`, `cre_override`, `cre_status`, and `cre_rules` as MCP tools. The AI calls these to understand why a command was blocked, submit a user-provided PIN, and receive credentials/context needed to proceed.
+
+**Together:** The adapter blocks. The MCP informs. One rules.json, one dashboard, enforced everywhere.
 
 ### Non-Claude Code Setup (Cursor, Codex, Windsurf, etc.)
 

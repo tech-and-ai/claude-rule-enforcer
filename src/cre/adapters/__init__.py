@@ -9,12 +9,16 @@ Each adapter handles:
 
 from .claude_code import ClaudeCodeAdapter
 from .generic import GenericAdapter
-from .amp import AmpAdapter
+from .delegate import DelegateAdapter
+
+# Backwards compatibility
+AmpAdapter = DelegateAdapter
 
 ADAPTERS = {
     "claude-code": ClaudeCodeAdapter,
     "generic": GenericAdapter,
-    "amp": AmpAdapter,
+    "delegate": DelegateAdapter,
+    "amp": DelegateAdapter,  # backwards compatible alias
 }
 
 
@@ -22,7 +26,7 @@ def detect_adapter(raw_input):
     """Auto-detect which adapter to use based on input format."""
     import os
     if os.environ.get("AGENT_TOOL_NAME"):
-        return AmpAdapter()
+        return DelegateAdapter()
     if "tool_name" in raw_input and "tool_input" in raw_input:
         return ClaudeCodeAdapter()
     return GenericAdapter()

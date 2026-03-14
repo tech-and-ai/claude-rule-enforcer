@@ -9,4 +9,4 @@ if [ -f "$HOME/.local/share/amp/session.json" ]; then
     export CRE_INSTANCE_ID=$(python3 -c "import json;print(json.load(open('$HOME/.local/share/amp/session.json'))['lastThreadId'])" 2>/dev/null)
 fi
 
-exec .venv/bin/python -m cre.cli gate --format amp
+exec .venv/bin/python -m cre.cli gate --format delegate

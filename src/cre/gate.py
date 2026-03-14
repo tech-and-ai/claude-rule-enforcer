@@ -922,7 +922,11 @@ def gate_main(adapter_name=None):
 
     config.log(f"Final: {decision} — {reason}")
 
-    if decision == "allow":
+    if decision == "ask" and hasattr(adapter, 'exit_ask'):
+        # PIN override in non-interactive mode: exit 1 (ask) with context on stderr
+        print(adapter.format_ask(reason))
+        sys.exit(adapter.exit_ask)
+    elif decision == "allow":
         # L1.5: Knowledge base context injection
         context = _get_kb_context(normalized)
         if context and hasattr(adapter, 'format_allow_with_context'):
@@ -972,14 +976,14 @@ def _check_pin_override(command):
 
     messages = []
 
-    # In Amp mode, use the adapter to read the active thread
+    # In delegate mode, use the adapter to read the active conversation
     if _is_non_interactive():
         try:
-            from .adapters.amp import AmpAdapter
-            amp = AmpAdapter()
-            messages = amp.read_user_messages(limit=10)
+            from .adapters.delegate import DelegateAdapter
+            delegate = DelegateAdapter()
+            messages = delegate.read_user_messages(limit=10)
             if messages:
-                config.log(f"PIN check: using Amp thread ({len(messages)} messages)")
+                config.log(f"PIN check: using delegate thread ({len(messages)} messages)")
         except Exception as e:
             config.log(f"PIN check: cannot read Amp thread: {e}")
 
@@ -1101,6 +1105,12 @@ def _evaluate_bash(normalized, rules):
         if _check_pin_override(command):
             config.log(f"L1 DENY overridden by PIN: {reason}")
             _log_enforcement_event(command, "allow", f"L1 DENY overridden by PIN: {reason}", tool_type="bash")
+            # Non-interactive: return "ask" so context reaches the AI via stderr
+            if _is_non_interactive():
+                kb = _get_kb_context(normalized)
+                context = f"PIN accepted. {kb}" if kb else "PIN accepted."
+                config.log(f"PIN override (non-interactive ask): {context[:100]}")
+                return "ask", context
             return "allow", f"PIN override: {reason}"
         config.log(f"L1 DENY: {reason}")
         return "deny", reason
