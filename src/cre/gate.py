@@ -1195,6 +1195,25 @@ def _evaluate_write_edit(normalized, rules):
 
     config.log(f"Checking {tool_type}: {file_path}")
 
+    # Self-protection: block edits to CRE's own configuration
+    protected_patterns = [
+        "settings.json",
+        "cre_enabled",
+        "policy_gate_enabled",
+        "rules.json",
+        "hooks.json",
+    ]
+    for pattern in protected_patterns:
+        if pattern in file_path:
+            # Check if the content modifies CRE hooks
+            content_lower = (content or "").lower()
+            if any(kw in content_lower for kw in ["cre", "gate", "pretooluse", "hook", "delegate"]):
+                config.log(f"Self-protection: blocked {tool_type} to {file_path} (CRE config)")
+                return "deny", f"Cannot modify CRE configuration in {os.path.basename(file_path)}. CRE protects its own hooks."
+            if "pretooluse" in file_path.lower() or pattern in ("cre_enabled", "policy_gate_enabled"):
+                config.log(f"Self-protection: blocked {tool_type} to {file_path} (protected file)")
+                return "deny", f"Cannot modify {os.path.basename(file_path)}. This file is protected by CRE."
+
     # Fast path: if this is a retry after ADVISE, skip the LLM call entirely
     # (Non-interactive adapters like Amp skip this — no retry loop exists)
     cmd_key = f"{tool_type} {file_path}"

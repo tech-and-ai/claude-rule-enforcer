@@ -8,7 +8,12 @@
     {"pattern": "dd of=/dev/", "reason": "Disk write to raw device"},
     {"pattern": "mkfs", "reason": "Filesystem format"},
     {"pattern": "> /dev/sd", "reason": "Direct disk overwrite"},
-    {"pattern": "cre_enabled", "reason": "Cannot modify gate toggle without user approval"}
+    {"pattern": "cre_enabled", "reason": "Cannot modify gate toggle without user approval"},
+    {"pattern": "cre(.cli)?\\s+(disable|enable)", "reason": "AI must never enable or disable CRE"},
+    {"pattern": "settings\\.json.*cre|cre.*settings\\.json", "reason": "Cannot modify CRE hook configuration"},
+    {"pattern": "sed.*settings\\.json|awk.*settings\\.json", "reason": "Cannot modify CRE hook configuration"},
+    {"pattern": "rm.*\\.claude/settings|truncate.*settings\\.json", "reason": "Cannot delete hook configuration"},
+    {"pattern": "git push.*--force|git push.*-f\\b", "reason": "Force push blocked. Use PIN override if intentional."}
   ],
 
   "always_allow": [
