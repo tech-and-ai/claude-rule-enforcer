@@ -19,6 +19,8 @@ Or delegate all tools:
   amp permissions add delegate '*' --to "cre gate --format amp"
 """
 
+import glob
+import json
 import os
 import sys
 
@@ -28,6 +30,50 @@ class AmpAdapter:
 
     name = "amp"
     non_interactive = True  # Delegate mode has no retry loop; ADVISE = hard deny
+
+    def get_active_thread_file(self):
+        """Find the active Amp thread file by reading session.json."""
+        session_file = os.path.expanduser("~/.local/share/amp/session.json")
+        threads_dir = os.path.expanduser("~/.local/share/amp/threads")
+        try:
+            with open(session_file, 'r') as f:
+                thread_id = json.load(f).get("lastThreadId", "")
+            if thread_id:
+                path = os.path.join(threads_dir, f"{thread_id}.json")
+                if os.path.exists(path):
+                    return path
+        except Exception:
+            pass
+        # Fallback: newest thread file
+        files = glob.glob(os.path.join(threads_dir, "*.json"))
+        return max(files, key=os.path.getmtime) if files else None
+
+    def read_user_messages(self, limit=10):
+        """Read user messages from the active Amp thread."""
+        thread_file = self.get_active_thread_file()
+        if not thread_file:
+            return []
+        try:
+            with open(thread_file, 'r') as f:
+                thread = json.load(f)
+            messages = []
+            for msg in thread.get("messages", []):
+                if msg.get("role") != "user":
+                    continue
+                content = msg.get("content", [])
+                text = ""
+                if isinstance(content, str):
+                    text = content
+                elif isinstance(content, list):
+                    for c in content:
+                        if isinstance(c, dict) and c.get("type") == "text":
+                            text = c.get("text", "")
+                            break
+                if text and len(text.strip()) > 1:
+                    messages.append({"role": "user", "content": text[:500], "timestamp": ""})
+            return messages[-limit:]
+        except Exception:
+            return []
 
     def parse_input(self, raw):
         """Parse Amp delegate input into CRE normalized format.

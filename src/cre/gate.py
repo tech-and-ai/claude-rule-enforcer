@@ -972,17 +972,14 @@ def _check_pin_override(command):
 
     messages = []
 
-    # In Amp mode, read Amp thread files for user PIN messages
+    # In Amp mode, use the adapter to read the active thread
     if _is_non_interactive():
         try:
-            from .session import _read_amp_thread
-            import glob
-            sessions_dir = os.environ.get("CRE_SESSIONS_DIR", "")
-            if sessions_dir:
-                json_files = glob.glob(os.path.join(sessions_dir, "*.json"))
-                if json_files:
-                    messages = _read_amp_thread(json_files, limit=10)
-                    config.log(f"PIN check: using Amp thread ({len(messages)} messages)")
+            from .adapters.amp import AmpAdapter
+            amp = AmpAdapter()
+            messages = amp.read_user_messages(limit=10)
+            if messages:
+                config.log(f"PIN check: using Amp thread ({len(messages)} messages)")
         except Exception as e:
             config.log(f"PIN check: cannot read Amp thread: {e}")
 
