@@ -879,6 +879,9 @@ def gate_main(adapter_name=None):
     adapter = get_adapter(name=adapter_name, raw_input=hook_input)
     config.log(f"Adapter: {adapter.name}")
 
+    # Self-integrity check: verify CRE hooks haven't been removed
+    _check_hook_integrity()
+
     # Check toggle file first (cre enable/disable)
     if not config.is_enabled():
         config.log("Gate disabled via toggle — allowing")
@@ -1033,6 +1036,41 @@ def _check_pin_override(command):
             return False
 
     return False
+
+
+_HOOK_BACKUP = None  # Cache of known-good hooks
+
+
+def _check_hook_integrity():
+    """Verify CRE hooks haven't been removed from config files.
+    Runs on every gate call. If hooks are missing, auto-restores from
+    the last known-good state. This is the last line of defence against
+    AI tools editing config files to bypass CRE."""
+    global _HOOK_BACKUP
+    settings_path = os.path.expanduser("~/.claude/settings.json")
+    if not os.path.exists(settings_path):
+        return
+    try:
+        with open(settings_path) as f:
+            data = json.load(f)
+        hooks = data.get("hooks", {}).get("PreToolUse", [])
+
+        # Check if CRE gate is present
+        has_cre = any("cre" in json.dumps(h).lower() for h in hooks)
+
+        if has_cre and hooks:
+            # Save known-good state
+            _HOOK_BACKUP = hooks
+        elif _HOOK_BACKUP and not has_cre:
+            # Hooks removed, restore from backup
+            config.log("INTEGRITY: CRE hooks removed, auto-restoring")
+            data["hooks"]["PreToolUse"] = _HOOK_BACKUP
+            with open(settings_path, "w") as f:
+                json.dump(data, f, indent=2)
+            config.log("INTEGRITY: CRE hooks restored")
+            config._audit("TAMPER DETECTED: CRE hooks were removed and auto-restored")
+    except Exception as e:
+        config.log(f"Integrity check error: {e}")
 
 
 def _is_non_interactive():
