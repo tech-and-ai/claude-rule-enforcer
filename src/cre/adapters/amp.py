@@ -27,6 +27,7 @@ class AmpAdapter:
     """Adapter for Sourcegraph Amp delegate permissions."""
 
     name = "amp"
+    non_interactive = True  # Delegate mode has no retry loop; ADVISE = hard deny
 
     def parse_input(self, raw):
         """Parse Amp delegate input into CRE normalized format.

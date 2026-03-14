@@ -1013,6 +1013,12 @@ def _check_pin_override(command):
     return False
 
 
+def _is_non_interactive():
+    """Check if running in a non-interactive adapter (e.g. Amp delegate).
+    Non-interactive adapters have no retry loop, so ADVISE = hard deny."""
+    return bool(os.environ.get("AGENT_TOOL_NAME"))
+
+
 def _check_advise_acknowledgement(command, advice_reason):
     """Check if AI has acknowledged an ADVISE by looking for a retry.
 
@@ -1059,10 +1065,12 @@ def _evaluate_bash(normalized, rules):
     config.log(f"Checking: {command[:200]}")
 
     # Fast path: if this is a retry after ADVISE, skip L2 entirely
-    ack = _check_advise_acknowledgement(command, "")
-    if ack is not None:
-        config.log(f"ADVISE acknowledged (PROCEED) — skipping L2: {command[:100]}")
-        return "allow", f"⚠ Proceeded despite advice: {ack[1] or 'previous advisory'}"
+    # (Non-interactive adapters like Amp skip this — no retry loop exists)
+    if not _is_non_interactive():
+        ack = _check_advise_acknowledgement(command, "")
+        if ack is not None:
+            config.log(f"ADVISE acknowledged (PROCEED) — skipping L2: {command[:100]}")
+            return "allow", f"⚠ Proceeded despite advice: {ack[1] or 'previous advisory'}"
 
     # L1: Regex (flat rules — allow or block, no escalation)
     decision, reason = regex_check(command, rules)
@@ -1107,6 +1115,10 @@ def _evaluate_bash(normalized, rules):
         config.log(f"L2a ADVISE: {perm_reason}")
 
         # Forced acknowledgement — block until AI decides
+        # Non-interactive adapters (Amp delegate) can't retry, so hard deny
+        if _is_non_interactive():
+            config.log(f"L2a ADVISE → hard deny (non-interactive adapter)")
+            return "deny", perm_reason
         ack = _check_advise_acknowledgement(command, perm_reason)
         if ack is None:
             # First time: hard stop, AI must acknowledge
@@ -1133,6 +1145,9 @@ def _evaluate_bash(normalized, rules):
 
     # L2b DENY = ADVISE with forced acknowledgement
     config.log(f"L2b ADVISE: {llm_reason}")
+    if _is_non_interactive():
+        config.log(f"L2b ADVISE → hard deny (non-interactive adapter)")
+        return "deny", llm_reason
     ack = _check_advise_acknowledgement(command, llm_reason)
     if ack is None:
         return "deny", f"ADVISE: {llm_reason}. Acknowledge: retry to PROCEED, or do not retry to STOP."
@@ -1153,11 +1168,13 @@ def _evaluate_write_edit(normalized, rules):
     config.log(f"Checking {tool_type}: {file_path}")
 
     # Fast path: if this is a retry after ADVISE, skip the LLM call entirely
+    # (Non-interactive adapters like Amp skip this — no retry loop exists)
     cmd_key = f"{tool_type} {file_path}"
-    ack = _check_advise_acknowledgement(cmd_key, "")
-    if ack is not None:
-        config.log(f"ADVISE acknowledged (PROCEED) — skipping L2: {file_path}")
-        return "allow", f"⚠ Proceeded despite advice: {ack[1] or 'previous advisory'}"
+    if not _is_non_interactive():
+        ack = _check_advise_acknowledgement(cmd_key, "")
+        if ack is not None:
+            config.log(f"ADVISE acknowledged (PROCEED) — skipping L2: {file_path}")
+            return "allow", f"⚠ Proceeded despite advice: {ack[1] or 'previous advisory'}"
 
     if not rules.get("llm_review_enabled", True):
         config.log(f"L2 SKIP (disabled), allowing {tool_type}")
@@ -1178,6 +1195,9 @@ def _evaluate_write_edit(normalized, rules):
         # L2 DENY = ADVISE with forced acknowledgement
         _log_enforcement_event(file_path, "advise", f"L2a ADVISE: {perm_reason}", tool_type=tool_type)
         config.log(f"L2a ADVISE: {perm_reason}")
+        if _is_non_interactive():
+            config.log(f"L2a ADVISE → hard deny (non-interactive adapter)")
+            return "deny", perm_reason
         ack = _check_advise_acknowledgement(f"{tool_type} {file_path}", perm_reason)
         if ack is None:
             return "deny", f"ADVISE: {perm_reason}. Acknowledge: retry to PROCEED, or do not retry to STOP."
@@ -1204,6 +1224,9 @@ def _evaluate_write_edit(normalized, rules):
 
     # L2b DENY = ADVISE with forced acknowledgement
     config.log(f"L2b ADVISE: {llm_reason}")
+    if _is_non_interactive():
+        config.log(f"L2b ADVISE → hard deny (non-interactive adapter)")
+        return "deny", llm_reason
     ack = _check_advise_acknowledgement(f"{tool_type} {file_path}", llm_reason)
     if ack is None:
         return "deny", f"ADVISE: {llm_reason}. Acknowledge: retry to PROCEED, or do not retry to STOP."
