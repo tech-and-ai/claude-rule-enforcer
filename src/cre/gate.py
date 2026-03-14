@@ -467,6 +467,18 @@ def _get_preferences_text(rules):
     return "\n".join(lines)
 
 
+def _get_extra_llm_params():
+    """Return model-specific extra params for the LLM API call.
+    MiniMax M2.5 needs reasoning_split to separate thinking from content.
+    Other OpenAI-compatible APIs get no extra params."""
+    model = config.LLM_MODEL.lower()
+    if "minimax" in model:
+        return {"reasoning_split": True}
+    if "glm" in model:
+        return {"enable_thinking": False}
+    return {}
+
+
 def _call_llm(prompt, user_msg, retries=3):
     """Send a prompt to the configured LLM. Retries on 429 with backoff (follows QP pattern). Returns parsed JSON or None."""
     if not config.LLM_API_KEY:
@@ -487,8 +499,8 @@ def _call_llm(prompt, user_msg, retries=3):
                         {"role": "user", "content": user_msg}
                     ],
                     "temperature": 0.1,
-                    "max_tokens": 256,
-                    "enable_thinking": False,
+                    "max_tokens": 1024,
+                    **(_get_extra_llm_params()),
                 },
                 timeout=config.LLM_TIMEOUT
             )
@@ -506,6 +518,8 @@ def _call_llm(prompt, user_msg, retries=3):
             resp.raise_for_status()
             content = resp.json()['choices'][0]['message']['content'].strip()
             content = content.replace("```json", "").replace("```", "").strip()
+            # Strip MiniMax M2.5 thinking tags
+            content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
             return json.loads(content)
 
         except requests.Timeout:
@@ -549,14 +563,15 @@ def _call_llm(prompt, user_msg, retries=3):
                         {"role": "user", "content": user_msg}
                     ],
                     "temperature": 0.1,
-                    "max_tokens": 256,
-                    "enable_thinking": False,
+                    "max_tokens": 1024,
+                    **(_get_extra_llm_params()),
                 },
                 timeout=config.LLM_TIMEOUT
             )
             resp.raise_for_status()
             content = resp.json()['choices'][0]['message']['content'].strip()
             content = content.replace("```json", "").replace("```", "").strip()
+            content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
             config.log(f"Fallback {config.LLM_FALLBACK_MODEL} succeeded")
             return json.loads(content)
         except Exception as e:

@@ -8,7 +8,7 @@ from datetime import datetime
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(PACKAGE_DIR))
 
-# --- Load .env file (if present, doesn't override existing env vars) ---
+# --- Load .env file (if present, OVERRIDES existing env vars) ---
 _env_file = os.path.join(PROJECT_ROOT, ".env")
 if os.path.exists(_env_file):
     with open(_env_file) as _f:
@@ -17,8 +17,7 @@ if os.path.exists(_env_file):
             if _line and not _line.startswith("#") and "=" in _line:
                 _key, _, _val = _line.partition("=")
                 _key, _val = _key.strip(), _val.strip()
-                if _key not in os.environ:
-                    os.environ[_key] = _val
+                os.environ[_key] = _val
 
 # --- Environment-based config (all overridable) ---
 LLM_API_URL = os.environ.get("CRE_LLM_API_URL", "https://api.openai.com/v1/chat/completions")
@@ -35,6 +34,9 @@ CRE_MD_PATH = os.environ.get("CRE_MD_PATH", os.path.join(PROJECT_ROOT, "CRE.md")
 # PIN override for L1 blocks
 OVERRIDE_PIN = os.environ.get("CRE_OVERRIDE_PIN", "")
 OVERRIDE_TTL = int(os.environ.get("CRE_OVERRIDE_TTL", "60"))
+
+# SQLite database
+DB_PATH = os.environ.get("CRE_DB_PATH", os.path.join(os.path.expanduser("~"), ".cre", "cre.db"))
 
 # L2 advice tracking
 ADVISE_THRESHOLD = int(os.environ.get("CRE_ADVISE_THRESHOLD", "5"))
