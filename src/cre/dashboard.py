@@ -1335,6 +1335,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 lines = []
             except Exception as e:
                 lines = [f"Error reading log: {e}"]
+            # Merge SQLite events into logs
+            try:
+                from . import db
+                db.init_db()
+                db_events = db.get_events(limit=50)
+                for e in db_events:
+                    ed = dict(e)
+                    lines.append(f"[{ed.get('timestamp','')}] [DB] {ed.get('decision','').upper()}: {ed.get('command','')[:80]} ({ed.get('reason','')[:100]})")
+                lines.sort()
+                lines = lines[-100:]
+            except Exception:
+                pass
             self._send_json({"lines": lines})
 
         elif path == "/api/sessions":
@@ -1708,6 +1720,32 @@ def _get_sessions():
             elif "windsurf" in live_adapters:
                 sess["adapter"] = "windsurf"
 
+    # 5. Merge SQLite sessions
+    try:
+        from . import db
+        db.init_db()
+        db_sessions = db.get_sessions()
+        db_events = db.get_events(limit=50)
+        seen_ids = {s["instance_id"] for s in sessions}
+        for ds in db_sessions:
+            ds_dict = dict(ds)
+            if ds_dict.get("id") not in seen_ids:
+                sessions.append({
+                    "instance_id": ds_dict.get("id", ""),
+                    "adapter": ds_dict.get("tool_type", "unknown"),
+                    "project": ds_dict.get("project", ""),
+                    "source_file": "sqlite",
+                    "messages": 0,
+                    "last_active": ds_dict.get("last_active", ""),
+                    "age_minutes": 0,
+                    "status": ds_dict.get("status", "unknown"),
+                    "last_message": "",
+                    "last_role": "",
+                    "size_bytes": 0,
+                })
+    except Exception:
+        db_events = []
+
     # Sort by age (most recent first)
     sessions.sort(key=lambda s: s["age_minutes"])
 
@@ -1723,6 +1761,7 @@ def _get_sessions():
     return {
         "sessions": sessions,
         "live_processes": live_processes,
+        "db_events": [dict(e) for e in db_events] if db_events else [],
         "summary": {
             "total": len(sessions),
             "active": active,
