@@ -58,6 +58,12 @@ CRE_LLM_API_KEY=your-api-key
 
 L1 (regex enforcement) works immediately with no API key. L2 (intent checking) needs the key.
 
+All events are logged to SQLite at `~/.cre/cre.db`. View them in the dashboard:
+
+```bash
+cre dashboard    # opens http://localhost:8766
+```
+
 ### Hook into your AI coding tool
 
 **Option A: Auto-configure (Claude Code)**
@@ -417,6 +423,7 @@ Alignment defaults to **ALLOW** on failure (it's advisory, not security). Toggle
 | `CRE_OVERRIDE_PIN` | *(not set)* | PIN to override L1 blocks. It's a signal, not a password |
 | `CRE_OVERRIDE_TTL` | `60` | Seconds before a PIN override expires |
 | `CRE_ADVISE_THRESHOLD` | `5` | How many ignored ADVISEs before surfacing for your decision |
+| `CRE_DB_PATH` | `~/.cre/cre.db` | SQLite database for events, sessions, advice tracking |
 
 **Note:** L1 (regex) works with zero configuration. L2 needs `CRE_LLM_API_KEY`. Without it, L1 still works and L2 is skipped. See `.env.example` for a complete template.
 
@@ -453,6 +460,7 @@ CRE works with any OpenAI-compatible chat completions API:
 | **OpenRouter** | `https://openrouter.ai/api/v1/chat/completions` | Any model |
 | **Together** | `https://api.together.xyz/v1/chat/completions` | Any model |
 | **Zhipu (GLM)** | `https://open.bigmodel.cn/api/paas/v4/chat/completions` | `glm-4-flash` |
+| **MiniMax** | `https://api.minimax.io/v1/chat/completions` | `MiniMax-M2.5-highspeed` |
 
 ## Tool-Agnostic Design
 
