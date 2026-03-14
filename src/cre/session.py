@@ -109,6 +109,18 @@ def read_live_session(limit=30):
         if not sessions_dir:
             return []
 
+        # Log session to SQLite
+        try:
+            from . import db
+            db.init_db()
+            db.log_session(
+                session_id=os.environ.get("CRE_INSTANCE_ID", os.path.basename(sessions_dir)),
+                tool_type=os.environ.get("AGENT_TOOL_NAME", "claude-code"),
+                project=os.path.basename(sessions_dir),
+            )
+        except Exception:
+            pass
+
         jsonl_files = glob.glob(os.path.join(sessions_dir, "*.jsonl"))
 
         # Also check for Amp-style JSON thread files

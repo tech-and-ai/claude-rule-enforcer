@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from fastmcp import FastMCP
 
 from . import config
+from . import db
 from .gate import regex_check, _get_kb_context, call_permission_check
 
 mcp = FastMCP(
@@ -37,6 +38,12 @@ mcp = FastMCP(
                 "Checks commands against L1 regex rules and L2 LLM review. "
                 "Provides PIN override with credential injection.",
 )
+
+# Initialize SQLite database
+try:
+    db.init_db()
+except Exception:
+    pass
 
 # Track recent blocks for cre_status
 _recent_blocks = []
@@ -103,6 +110,12 @@ def cre_check(command: str, user_context: str = "") -> str:
         "decision": decision,
         "reason": reason,
     }
+
+    # Log to SQLite
+    try:
+        db.log_event("mcp", command[:200], decision, reason[:500], "L2" if l2_result else "L1", "cre_check")
+    except Exception:
+        pass
 
     if l2_result:
         result["l2"] = l2_result

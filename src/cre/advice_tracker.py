@@ -81,6 +81,14 @@ def log_advice_outcome(command, advice_reason, outcome):
         _maybe_create_suggestion(tracker, key, entry)
 
     _save_tracker(tracker)
+
+    # Also log to SQLite
+    try:
+        from . import db
+        db.init_db()
+        db.log_advice(key, command[:120], advice_reason, outcome)
+    except Exception:
+        pass
     config.log(f"Advice tracked: {outcome} on '{key[:40]}' (proceed={entry['proceed_count']}, stop={entry['stop_count']})")
 
 

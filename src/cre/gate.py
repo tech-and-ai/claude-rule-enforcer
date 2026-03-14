@@ -900,6 +900,13 @@ def gate_main(adapter_name=None):
     adapter = get_adapter(name=adapter_name, raw_input=hook_input)
     config.log(f"Adapter: {adapter.name}")
 
+    # Initialize SQLite database
+    try:
+        from . import db
+        db.init_db()
+    except Exception:
+        pass
+
     # Self-integrity check: verify CRE hooks haven't been removed
     _check_hook_integrity()
 
@@ -945,6 +952,19 @@ def gate_main(adapter_name=None):
         decision, reason = _evaluate_alignment(normalized, rules)
 
     config.log(f"Final: {decision} — {reason}")
+
+    # Log decision to SQLite
+    try:
+        db.log_event(
+            session_id=os.environ.get("CRE_INSTANCE_ID", "unknown"),
+            command=normalized.get("command", normalized.get("file_path", ""))[:200],
+            decision=decision,
+            reason=reason[:500],
+            layer="gate",
+            tool_name=normalized.get("tool_name", ""),
+        )
+    except Exception:
+        pass
 
     if decision == "ask" and hasattr(adapter, 'exit_ask'):
         # PIN override in non-interactive mode: exit 1 (ask) with context on stderr
