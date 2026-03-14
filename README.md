@@ -91,23 +91,33 @@ claude mcp add cre -- python -m cre.mcp_server
 # {"servers": {"cre": {"command": "python", "args": ["-m", "cre.mcp_server"]}}}
 ```
 
-The MCP server exposes four tools:
+The MCP server has two modes:
+
+**Advisory mode** (default). The AI uses its own built-in tools but checks with CRE first:
 
 | Tool | Purpose |
 |------|---------|
-| `cre_check` | Test a command against L1 rules, with optional L2 intent checking via `user_context` |
+| `cre_check` | Test a command against L1 + L2 rules before running it |
 | `cre_override` | Submit a PIN to unlock a blocked command, returns credentials/context |
 | `cre_status` | Show gate state, rule counts, recent blocks |
 | `cre_rules` | List active rules by category |
 
-For mandatory enforcement (the AI cannot bypass this), also add a delegate gate:
+**Execution mode**. CRE becomes the tool layer. The AI runs commands through CRE instead of using built-in tools. Every call gets L1 + L2 enforcement automatically:
+
+| Tool | Purpose |
+|------|---------|
+| `cre_run` | Execute a shell command through CRE (L1 + L2 checked, then executed) |
+| `cre_write` | Write a file through CRE (self-protection enforced) |
+| `cre_read` | Read a file through CRE |
+
+In execution mode, the platform vendor configures their tool to use `cre_run` instead of built-in Bash. CRE becomes invisible mandatory middleware.
+
+For additional enforcement, add a delegate gate (optional):
 
 ```bash
-# Amp delegate (blocks tool calls before execution)
+# Delegate gate (blocks built-in tool calls before execution)
 amp permissions add delegate Bash --to "/path/to/cre-gate-wrapper"
 ```
-
-The delegate blocks. The MCP informs. Together they give the same experience as Claude Code's native hooks.
 
 **Option D: Generic (any tool)**
 
