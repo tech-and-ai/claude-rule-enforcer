@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claude-rule-enforcer"
-version = "0.3.0"
+version = "0.4.0"
 description = "A PA for your AI — behavioural enforcement for Claude Code"
 readme = "README.md"
 license = "LicenseRef-BSL-1.1"
