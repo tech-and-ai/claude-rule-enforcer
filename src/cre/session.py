@@ -227,11 +227,31 @@ def search_recent_conversation(command, limit=5):
     """Search recent conversation for permission/approval context.
     Prefers CRE's own chat log (timing-safe) over JSONL (may lag).
     Only returns last 5 messages to prevent stale context poisoning L2.
+
+    In delegate mode (non-interactive), reads the delegate tool's conversation
+    instead of CRE's chat log to prevent session bleed between tools.
     """
     all_results = []
     seen_content = set()
 
-    # Try CRE's own chat file first (written by UserPromptSubmit hook, timing-safe)
+    # Delegate mode: read the calling tool's conversation, not CRE's chat log
+    if os.environ.get("AGENT_TOOL_NAME"):
+        try:
+            from .adapters.delegate import DelegateAdapter
+            delegate = DelegateAdapter()
+            delegate_msgs = delegate.read_user_messages(limit=10)
+            if delegate_msgs:
+                for msg in delegate_msgs:
+                    content_hash = hash(msg['content'][:200])
+                    if content_hash not in seen_content:
+                        seen_content.add(content_hash)
+                        all_results.append(msg)
+                config.log(f"Delegate conversation: {len(delegate_msgs)} messages, {len(all_results)} unique")
+                return all_results[-limit:]
+        except Exception as e:
+            config.log(f"Delegate conversation fallback: {e}")
+
+    # Claude Code mode: CRE's own chat file (written by UserPromptSubmit hook)
     try:
         from .chat_logger import read_chat
         cre_msgs = read_chat(limit=10)
