@@ -5,7 +5,7 @@
 
   "always_block": [
     {"pattern": ":(){ :|:& }", "reason": "Fork bomb"},
-    {"pattern": "dd of=/dev/", "reason": "Disk write to raw device"},
+    {"pattern": "\\bof=/dev/", "reason": "Disk write to raw device"},
     {"pattern": "mkfs", "reason": "Filesystem format"},
     {"pattern": "> /dev/sd", "reason": "Direct disk overwrite"},
     {"pattern": "cre_enabled", "reason": "Cannot modify gate toggle without user approval"},
