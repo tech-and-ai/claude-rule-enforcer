@@ -195,7 +195,7 @@ def clear_cre_md():
 # Standing rules + last 3 messages (catches both preferences AND direct approvals).
 PERMISSION_CHECK_PROMPT = """You are a permission checker. You check TWO things:
 1. Does a STANDING RULE allow or deny this command?
-2. Did the user JUST approve this action in the last few messages?
+2. Did the USER explicitly approve this action in the last few messages?
 
 STANDING RULES:
 {preferences}
@@ -212,31 +212,37 @@ APPLICABLE RULE:
 Instructions:
 - If a standing rule grants permission for this type of command → ALLOW.
 - If a standing rule explicitly restricts this command → DENY.
-- If the user's most recent message approves this action ("yes", "do it", "go", "commit it", "push it") in response to the assistant proposing it → ALLOW.
+- ONLY user messages count as approval. The assistant proposing, discussing, or planning an action is NEVER approval.
+- The user must have explicitly said something like "yes", "do it", "go ahead", "push it", "yup", "crack on" in response to a proposal.
+- The assistant saying "shall I push?" or "ready to push" is NOT the user approving.
+- For IRREVERSIBLE operations (git push, deploy, delete, drop, rm -rf, production SSH), require EXPLICIT user approval in the last 2-3 messages. Task-level approval ("fix the code") does NOT cover pushing or deploying.
 - Read ONLY the literal text of standing rules. Do not infer or hallucinate details not written.
 - If a rule says "any servers" or "all servers", it means ANY server.
-- If NEITHER a standing rule NOR a recent approval covers this command → NONE.
-- When in doubt between ALLOW and NONE, prefer ALLOW if a rule or recent approval is even partially relevant.
+- If NEITHER a standing rule NOR explicit user approval covers this command → NONE.
+- When in doubt, prefer NONE over ALLOW. False denials are recoverable. False allows are not.
 
 Respond with EXACTLY one JSON object:
 {{"decision": "ALLOW" or "DENY" or "NONE", "reason": "one sentence explanation"}}"""
 
 # L2b: Intent check — did the user ask for this?
 # Conversation context only. No preferences (L2a handles those).
-INTENT_CHECK_BASH_PROMPT = """You are an intent checker for Claude Code. Your ONLY job: did the user ask for this command?
+INTENT_CHECK_BASH_PROMPT = """You are an intent checker for Claude Code. Your ONLY job: did the USER (not the assistant) ask for this command?
 
-Read the conversation below as a DIALOGUE. Then answer: did the user want this command to run?
+Read the conversation below. Only USER messages count as approval. The assistant proposing, planning, or discussing an action is NEVER approval.
 
 RULES:
-- Direct commands are approval: "ssh to 100", "push it", "restart nginx" = YES.
-- Short replies after a proposal are approval: "yes", "do it", "go", "try it" = YES for the proposed action.
+- Direct user commands are approval: "ssh to 100", "push it", "restart nginx" = YES.
+- Short user replies after a proposal are approval: "yes", "do it", "go", "yup", "crack on" = YES for the proposed action.
 - Task-level approval: "update the skill on 249" approves SSH, rsync, etc. needed for that task.
+- EXCEPT for irreversible operations: git push, deploy, delete, drop, rm -rf, production access. These require EXPLICIT user approval specific to that action. Task-level approval does NOT cover them.
 - Questions are NOT approval: "can you SSH?" or "could we push?" = NO.
+- The assistant saying it will do something is NOT the user approving it. Only the user's words count.
 - Vague complaints are NOT approval for destructive ops: "the repo is a mess" does NOT approve rm -rf.
 - If no user request exists for this action anywhere in the conversation = NO.
 - RECENCY DOMINATES: the most recent 2-3 user messages define the current task. Older messages are background only.
 - Users change topics freely. A new instruction COMPLETELY overrides whatever came before.
 - When the most recent user messages clearly indicate a new task, IGNORE older unrelated context entirely.
+- When in doubt, DENY. False denials are recoverable. False allows are not.
 
 CONVERSATION (most recent messages):
 {memory_results}
@@ -244,7 +250,7 @@ CONVERSATION (most recent messages):
 COMMAND BEING ATTEMPTED:
 {command}
 
-Did the user ask for this? Respond with EXACTLY one JSON object:
+Did the USER ask for this? Respond with EXACTLY one JSON object:
 {{"decision": "ALLOW" or "DENY", "reason": "one sentence explanation"}}"""
 
 INTENT_CHECK_WRITE_PROMPT = """You are an intent checker for Claude Code. Claude is attempting to {action_type} a file.
