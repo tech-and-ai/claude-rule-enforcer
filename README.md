@@ -44,27 +44,25 @@ CRE isn't just a security gate. It's a **behavioural adapter** that learns how y
 git clone https://github.com/tech-and-ai/claude-rule-enforcer.git
 cd claude-rule-enforcer
 pip install -e .
+cre init
 ```
 
-### Configure
+That's it. `cre init` auto-copies rules, creates `.env`, configures hooks, and enables the gate. Edit `.env` to set your LLM API key for Layer 2:
 
 ```bash
-# Copy the example rules
-cp rules.example.json rules.json
-
-# Set the LLM API key for Layer 2 reviews
-export CRE_LLM_API_KEY="your-api-key"
+# .env — set your API key for L2 intent checking
+CRE_LLM_API_KEY=your-api-key
 # Defaults: OpenAI endpoint, gpt-4o-mini model
-# Override with any OpenAI-compatible API:
-# export CRE_LLM_API_URL="http://localhost:11434/v1/chat/completions"
-# export CRE_LLM_MODEL="llama3.1"
+# Works with any OpenAI-compatible API (Ollama, OpenRouter, etc.)
 ```
+
+L1 (regex enforcement) works immediately with no API key. L2 (intent checking) needs the key.
 
 ### Hook into your AI coding tool
 
 **Option A: Auto-configure (Claude Code)**
 ```bash
-cre init
+cre init  # already done above
 ```
 This writes the hooks into `~/.claude/settings.json` automatically.
 
