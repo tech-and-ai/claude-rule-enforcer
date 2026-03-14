@@ -1,0 +1,3 @@
+#!/bin/bash
+cd /home/admin/projects/claude-rule-enforcer
+exec .venv/bin/python -m cre.cli gate --format amp

@@ -9,15 +9,20 @@ Each adapter handles:
 
 from .claude_code import ClaudeCodeAdapter
 from .generic import GenericAdapter
+from .amp import AmpAdapter
 
 ADAPTERS = {
     "claude-code": ClaudeCodeAdapter,
     "generic": GenericAdapter,
+    "amp": AmpAdapter,
 }
 
 
 def detect_adapter(raw_input):
     """Auto-detect which adapter to use based on input format."""
+    import os
+    if os.environ.get("AGENT_TOOL_NAME"):
+        return AmpAdapter()
     if "tool_name" in raw_input and "tool_input" in raw_input:
         return ClaudeCodeAdapter()
     return GenericAdapter()

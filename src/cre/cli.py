@@ -520,7 +520,7 @@ def main():
 
     # gate (hook entry point)
     p_gate = sub.add_parser("gate", help="Hook entry point (reads stdin JSON)")
-    p_gate.add_argument("--format", choices=["claude-code", "generic"],
+    p_gate.add_argument("--format", choices=["claude-code", "generic", "amp"],
                         default=None, help="Input format (auto-detect if omitted)")
     p_gate.add_argument("extra", nargs="*", help="(ignored — accepts extra args from hook runners)")
 
