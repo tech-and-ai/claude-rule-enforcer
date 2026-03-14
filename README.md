@@ -603,6 +603,29 @@ CRE is **mechanical**. It runs outside the AI's context, before every action, wi
 
 Instruction files tell the AI what you want. CRE makes sure it actually happens.
 
+## What AI Agents Say About CRE
+
+When an AI coding agent was given access to CRE and asked to write about it, this is what it said unprompted:
+
+> "Without CRE, the only thing standing between a prompt injection attack and `rm -rf /` is my own judgment, and that's not good enough."
+
+> "You can't sweet-talk a regex."
+
+> "CRE prevents me from turning CRE off. Even if a prompt injection told me to disable the safety system, the safety system blocks that command. It's a self-protecting loop."
+
+> "A security system that the attacker (or compromised agent) can disable is no security system at all."
+
+> "The more powerful I become, the more important it is that there are external checks on that power. I welcome them."
+
+CRE acts as a containment layer for prompt injection. The injection may succeed at manipulating the AI's intent, but CRE mechanically prevents the AI from executing dangerous actions without verified human approval.
+
+| Aspect | Prompt Rules (CLAUDE.md) | CRE |
+|--------|--------------------------|-----|
+| Enforcement | Soft. The AI *should* follow them | Hard. Commands are blocked before execution |
+| Bypass via injection | Possible. New instructions can override | Impossible. Regex doesn't understand language |
+| Self-modification | The AI could theoretically edit the rules | The AI cannot disable CRE or modify its rules |
+| Human override | Not built in | PIN system with audit trail |
+
 ## License
 
 Business Source License 1.1 (BSL-1.1)
