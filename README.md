@@ -2,7 +2,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/tech-and-ai/claude-rule-enforcer?style=social)](https://github.com/tech-and-ai/claude-rule-enforcer)
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-790_passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-896_passing-brightgreen.svg)](tests/)
 
 **Your AI coding agent ignores your rules under pressure. CRE makes that mechanically impossible.**
 
@@ -540,7 +540,7 @@ L1 is the hard gate. L2 is your PA. If L2 fails, you lose the advice but nothing
 ```
 $ cre status
 
-Claude Rule Enforcer v0.3.0
+Claude Rule Enforcer v0.4.0
 
 Gate:           ENABLED
 LLM Review:     ON
@@ -587,7 +587,7 @@ pip install -e ".[dev]"
 # Run tests
 pytest tests/ -v
 
-# 790 tests covering L1 regex, L2 context review, adapters, CLI, and learning engine
+# 896+ tests covering L1 regex, L2 context review, adapters, MCP server, CLI, and learning engine
 ```
 
 ## Why Not Just CLAUDE.md / .cursorrules?
