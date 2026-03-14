@@ -85,8 +85,36 @@ def cmd_init(args):
     print(f"  Write|Edit → cre gate")
     print(f"  WebSearch|WebFetch|Agent|ToolSearch → cre gate")
 
-    # Also enable the gate
+    # Copy rules.example.json to rules.json if it doesn't exist
     from . import config
+    package_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(package_dir))
+    rules_example = os.path.join(project_root, "rules.example.json")
+    rules_target = os.path.join(project_root, "rules.json")
+
+    if os.path.exists(rules_example) and not os.path.exists(rules_target):
+        import shutil
+        shutil.copy2(rules_example, rules_target)
+        print(f"Created rules.json from rules.example.json")
+    elif os.path.exists(rules_target):
+        print(f"rules.json already exists")
+
+    # Create .env from .env.example if it doesn't exist
+    env_example = os.path.join(project_root, ".env.example")
+    env_target = os.path.join(project_root, ".env")
+    if os.path.exists(env_example) and not os.path.exists(env_target):
+        import shutil
+        shutil.copy2(env_example, env_target)
+        print(f"Created .env from .env.example (set CRE_LLM_API_KEY for L2)")
+
+    # Auto-scan for instruction files and import rules
+    instruction_files = ["CLAUDE.md", ".cursorrules", "AGENTS.md", "agents.md", ".claude/CLAUDE.md"]
+    found_files = [f for f in instruction_files if os.path.exists(os.path.join(os.getcwd(), f))]
+    if found_files:
+        print(f"\nFound instruction files: {', '.join(found_files)}")
+        print("Run 'cre import' to extract enforceable rules from these files.")
+
+    # Enable the gate
     config.enable()
     print(f"Gate enabled ({config.CRE_ENABLED_PATH})")
 
