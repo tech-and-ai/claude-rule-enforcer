@@ -95,7 +95,7 @@ The MCP server exposes four tools:
 
 | Tool | Purpose |
 |------|---------|
-| `cre_check` | Test a command against rules before running it |
+| `cre_check` | Test a command against L1 rules, with optional L2 intent checking via `user_context` |
 | `cre_override` | Submit a PIN to unlock a blocked command, returns credentials/context |
 | `cre_status` | Show gate state, rule counts, recent blocks |
 | `cre_rules` | List active rules by category |

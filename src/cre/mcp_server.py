@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from fastmcp import FastMCP
 
 from . import config
-from .gate import regex_check, _get_kb_context
+from .gate import regex_check, _get_kb_context, call_permission_check
 
 mcp = FastMCP(
     "Claude Rule Enforcer",
@@ -49,15 +49,17 @@ def _load_rules():
 
 
 @mcp.tool()
-def cre_check(command: str) -> str:
+def cre_check(command: str, user_context: str = "") -> str:
     """Check a command against CRE rules before running it.
 
     Returns whether the command would be allowed or blocked, with the reason.
-    Use this BEFORE executing potentially dangerous commands to understand
-    what CRE will do.
+    Use this BEFORE executing potentially dangerous commands.
 
     Args:
         command: The shell command to check (e.g. "git push --force origin main")
+        user_context: What the user asked for, so L2 can check intent alignment.
+                      If empty, only L1 regex runs. If provided, L2 checks whether
+                      the command matches the user's intent.
     """
     rules = _load_rules()
     if not rules:
@@ -66,7 +68,24 @@ def cre_check(command: str) -> str:
     if not rules.get("enabled", True):
         return json.dumps({"decision": "allow", "reason": "CRE is disabled"})
 
+    # L1: regex check
     decision, reason = regex_check(command, rules)
+
+    # L2: intent check (only if user_context provided and L1 didn't hard block)
+    l2_result = None
+    if user_context and decision != "deny":
+        try:
+            l2_decision, l2_reason = call_permission_check(
+                command, f"User said: {user_context}", rules
+            )
+            if l2_decision == "DENY":
+                decision = "deny"
+                reason = f"Intent mismatch: {l2_reason}"
+                l2_result = {"layer": "L2", "decision": "deny", "reason": l2_reason}
+            elif l2_decision == "ALLOW":
+                l2_result = {"layer": "L2", "decision": "allow", "reason": l2_reason}
+        except Exception as e:
+            config.log(f"MCP L2 error: {e}")
 
     # Build KB context for the command
     normalized = {
@@ -85,6 +104,9 @@ def cre_check(command: str) -> str:
         "reason": reason,
     }
 
+    if l2_result:
+        result["l2"] = l2_result
+
     if kb_context:
         result["context"] = kb_context
 
@@ -99,7 +121,8 @@ def cre_check(command: str) -> str:
         if len(_recent_blocks) > MAX_RECENT_BLOCKS:
             _recent_blocks.pop(0)
 
-    config.log(f"MCP cre_check: {command[:100]} -> {decision}")
+    config.log(f"MCP cre_check: {command[:100]} -> {decision}" +
+               (f" (L2: {l2_result['decision']})" if l2_result else ""))
     return json.dumps(result, indent=2)
 
 
