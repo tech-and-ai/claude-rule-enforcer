@@ -59,6 +59,47 @@ def detect_sessions_dir():
         return None
 
 
+def _read_amp_thread(json_files, limit=30):
+    """Read Amp thread JSON files. Amp stores one JSON file per thread with a
+    messages array containing {role, content[{type, text}]} objects."""
+    try:
+        latest = max(json_files, key=os.path.getmtime)
+        with open(latest, 'r') as f:
+            thread = json.load(f)
+
+        messages = []
+        for msg in thread.get("messages", []):
+            role = msg.get("role", "")
+            if role not in ("user", "assistant"):
+                continue
+
+            content = msg.get("content", [])
+            text = ""
+            if isinstance(content, str):
+                text = content
+            elif isinstance(content, list):
+                parts = []
+                for c in content:
+                    if isinstance(c, dict) and c.get("type") == "text":
+                        parts.append(c.get("text", ""))
+                text = " ".join(parts)
+
+            if not text or len(text.strip()) < 2:
+                continue
+
+            if role == "user":
+                clean = _strip_system_reminders(text)
+                if clean and len(clean.strip()) > 0:
+                    messages.append({"role": "user", "content": clean[:500], "timestamp": ""})
+            else:
+                messages.append({"role": "assistant", "content": text[:500], "timestamp": ""})
+
+        return messages[-limit:]
+    except Exception as e:
+        config.log(f"Amp thread read error: {e}")
+        return []
+
+
 def read_live_session(limit=30):
     """Read the most recent JSONL session file for current conversation messages.
     Includes BOTH user and assistant messages so the LLM can see Q&A context.
@@ -69,6 +110,12 @@ def read_live_session(limit=30):
             return []
 
         jsonl_files = glob.glob(os.path.join(sessions_dir, "*.jsonl"))
+
+        # Also check for Amp-style JSON thread files
+        json_files = glob.glob(os.path.join(sessions_dir, "*.json"))
+        if json_files and not jsonl_files:
+            return _read_amp_thread(json_files, limit)
+
         if not jsonl_files:
             return []
 

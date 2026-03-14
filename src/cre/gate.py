@@ -970,11 +970,32 @@ def _check_pin_override(command):
     if not pin:
         return False
 
-    try:
-        from .chat_logger import read_chat
-        messages = read_chat(limit=10)
-    except Exception as e:
-        config.log(f"PIN check: cannot read chat: {e}")
+    messages = []
+
+    # In Amp mode, read Amp thread files for user PIN messages
+    if _is_non_interactive():
+        try:
+            from .session import _read_amp_thread
+            import glob
+            sessions_dir = os.environ.get("CRE_SESSIONS_DIR", "")
+            if sessions_dir:
+                json_files = glob.glob(os.path.join(sessions_dir, "*.json"))
+                if json_files:
+                    messages = _read_amp_thread(json_files, limit=10)
+                    config.log(f"PIN check: using Amp thread ({len(messages)} messages)")
+        except Exception as e:
+            config.log(f"PIN check: cannot read Amp thread: {e}")
+
+    # Fallback to CRE's own chat log (Claude Code mode)
+    if not messages:
+        try:
+            from .chat_logger import read_chat
+            messages = read_chat(limit=10)
+        except Exception as e:
+            config.log(f"PIN check: cannot read CRE chat: {e}")
+
+    if not messages:
+        config.log(f"PIN check: no messages available")
         return False
 
     # Scan user messages (newest first) for PIN pattern
