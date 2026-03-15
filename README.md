@@ -91,7 +91,7 @@ claude --plugin-dir /path/to/claude-rule-enforcer
 
 **Option C: MCP Server (any tool with MCP support)**
 
-CRE ships as an MCP server. This is the recommended integration for non-Claude-Code tools (Amp, Cursor, Windsurf, Cody, etc.). The MCP server provides the intelligence layer (rule checking, PIN override with credential injection, status). Pair it with a delegate gate for mandatory enforcement.
+CRE ships as an MCP server that works with any tool supporting the Model Context Protocol. The MCP server provides the intelligence layer (rule checking, PIN override with credential injection, status). Pair it with a delegate gate for mandatory enforcement.
 
 ```bash
 # Amp
@@ -496,11 +496,11 @@ echo '{"tool":"bash","command":"git push"}' | cre gate --format generic
 python -m cre.mcp_server  # Start the MCP server (stdio transport)
 ```
 
-Exposes `cre_check`, `cre_override`, `cre_status`, and `cre_rules` as MCP tools. The AI calls these to understand why a command was blocked, submit a user-provided PIN, and receive credentials/context needed to proceed.
+Exposes 7 MCP tools: `cre_check`, `cre_override`, `cre_status`, `cre_rules` (advisory), plus `cre_run`, `cre_write`, `cre_read` (execution). The AI calls these to check rules, submit PINs, receive credentials, and execute commands through CRE's enforcement layer.
 
 **Together:** The adapter blocks. The MCP informs. One rules.json, one dashboard, enforced everywhere.
 
-### Non-Claude Code Setup (Cursor, Codex, Windsurf, etc.)
+### Non-Claude Code Setup (Cursor, Windsurf, Copilot, etc.)
 
 CRE auto-detects Claude Code sessions via process tree and env vars. For other tools, set `CRE_INSTANCE_ID` so L2 context stays isolated per session:
 
@@ -566,7 +566,7 @@ L1 is the hard gate. L2 is your PA. If L2 fails, you lose the advice but nothing
 ```
 $ cre status
 
-Claude Rule Enforcer v0.4.0
+Claude Rule Enforcer v0.5.0
 
 Gate:           ENABLED
 LLM Review:     ON

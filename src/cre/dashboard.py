@@ -186,6 +186,7 @@ a { color: #d4a843; }
 
 <div class="header">
     <h1>Claude Rule Enforcer <span class="ver">v""" + __import__('cre').__version__ + """</span></h1>
+    <div style="font-size:0.7rem;color:#888;margin-top:2px;">Developed by Leo Ruocco | Patent GB2604445.3 | <a href="https://ai-cre.uk" style="color:#00ff88;">ai-cre.uk</a></div>
     <div class="status">
         <span class="dot" id="gateDot"></span>
         <span class="badge" id="gateBadge"></span>
