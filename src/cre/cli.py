@@ -22,36 +22,39 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 
 from . import __version__
 
 
-def cmd_init(args):
-    """Auto-configure hooks in ~/.claude/settings.json."""
-    import os
+def _detect_tool():
+    """Detect which AI coding tool is installed."""
+    import shutil
+    tools = []
+    if os.path.isdir(os.path.expanduser("~/.claude")):
+        tools.append("claude-code")
+    if os.path.isdir(os.path.expanduser("~/.cursor")):
+        tools.append("cursor")
+    if shutil.which("windsurf") or os.path.isdir(os.path.expanduser("~/.windsurf")):
+        tools.append("windsurf")
+    if os.path.isdir(os.path.expanduser("~/.config/amp")):
+        tools.append("amp")
+    if os.path.isdir(os.path.join(os.getcwd(), ".github")):
+        tools.append("copilot")
+    return tools
 
+
+def _init_claude_code(hook_command):
+    """Configure hooks for Claude Code."""
     settings_path = os.path.expanduser("~/.claude/settings.json")
-    hook_command = "cre gate"
-
-    # Build the hooks config
     cre_hooks = {
         "PreToolUse": [
-            {
-                "matcher": "Bash",
-                "hooks": [{"type": "command", "command": hook_command}]
-            },
-            {
-                "matcher": "Write|Edit",
-                "hooks": [{"type": "command", "command": hook_command}]
-            },
-            {
-                "matcher": "WebSearch|WebFetch|Agent|ToolSearch",
-                "hooks": [{"type": "command", "command": hook_command}]
-            }
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": hook_command}]},
+            {"matcher": "Write|Edit", "hooks": [{"type": "command", "command": hook_command}]},
+            {"matcher": "WebSearch|WebFetch|Agent|ToolSearch", "hooks": [{"type": "command", "command": hook_command}]},
         ]
     }
-
     if os.path.exists(settings_path):
         try:
             with open(settings_path) as f:
@@ -61,29 +64,122 @@ def cmd_init(args):
     else:
         os.makedirs(os.path.dirname(settings_path), exist_ok=True)
         settings = {}
-
     existing_hooks = settings.get("hooks", {})
     existing_pre = existing_hooks.get("PreToolUse", [])
-
-    # Remove any existing CRE hooks
     cleaned = [h for h in existing_pre if "cre gate" not in json.dumps(h)
                and "policy-gate" not in json.dumps(h)
                and "policy_gate" not in json.dumps(h)]
-
-    # Add new CRE hooks
     cleaned.extend(cre_hooks["PreToolUse"])
-
     existing_hooks["PreToolUse"] = cleaned
     settings["hooks"] = existing_hooks
-
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
         f.write("\n")
+    print(f"  Claude Code: hooks in {settings_path}")
 
-    print(f"Hooks configured in {settings_path}")
-    print(f"  Bash → cre gate")
-    print(f"  Write|Edit → cre gate")
-    print(f"  WebSearch|WebFetch|Agent|ToolSearch → cre gate")
+
+def _init_copilot(hook_command):
+    """Configure hooks for GitHub Copilot (same format as Claude Code)."""
+    hooks_dir = os.path.join(os.getcwd(), ".github", "hooks")
+    os.makedirs(hooks_dir, exist_ok=True)
+    hooks_file = os.path.join(hooks_dir, "cre.json")
+    config = {
+        "hooks": {
+            "PreToolUse": [
+                {"type": "command", "command": hook_command, "timeout": 15}
+            ]
+        }
+    }
+    with open(hooks_file, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+    print(f"  Copilot: hooks in {hooks_file}")
+
+
+def _init_cursor(hook_command):
+    """Configure hooks for Cursor."""
+    cursor_dir = os.path.expanduser("~/.cursor")
+    os.makedirs(cursor_dir, exist_ok=True)
+    hooks_file = os.path.join(cursor_dir, "hooks.json")
+    config = {
+        "version": 1,
+        "hooks": {
+            "beforeShellExecution": [
+                {"command": hook_command, "timeout": 15}
+            ]
+        }
+    }
+    # Merge with existing if present
+    if os.path.exists(hooks_file):
+        try:
+            with open(hooks_file) as f:
+                existing = json.load(f)
+            hooks = existing.get("hooks", {})
+            pre = hooks.get("beforeShellExecution", [])
+            pre = [h for h in pre if "cre gate" not in json.dumps(h)]
+            pre.extend(config["hooks"]["beforeShellExecution"])
+            hooks["beforeShellExecution"] = pre
+            existing["hooks"] = hooks
+            config = existing
+        except Exception:
+            pass
+    with open(hooks_file, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+    print(f"  Cursor: hooks in {hooks_file}")
+
+
+def _init_windsurf(hook_command):
+    """Configure hooks for Windsurf."""
+    hooks_file = os.path.join(os.getcwd(), "hooks.json")
+    config = {
+        "hooks": {
+            "pre_run_command": [
+                {"command": hook_command}
+            ]
+        }
+    }
+    if os.path.exists(hooks_file):
+        try:
+            with open(hooks_file) as f:
+                existing = json.load(f)
+            hooks = existing.get("hooks", {})
+            pre = hooks.get("pre_run_command", [])
+            pre = [h for h in pre if "cre gate" not in json.dumps(h)]
+            pre.extend(config["hooks"]["pre_run_command"])
+            hooks["pre_run_command"] = pre
+            existing["hooks"] = hooks
+            config = existing
+        except Exception:
+            pass
+    with open(hooks_file, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+    print(f"  Windsurf: hooks in {hooks_file}")
+
+
+def cmd_init(args):
+    """Auto-configure hooks for detected AI coding tools."""
+    import os
+
+    hook_command = "cre gate"
+    detected = _detect_tool()
+
+    if not detected:
+        print("No AI coding tools detected. Configuring for Claude Code by default.")
+        detected = ["claude-code"]
+
+    print(f"Detected tools: {', '.join(detected)}")
+
+    for tool in detected:
+        if tool == "claude-code":
+            _init_claude_code(hook_command)
+        elif tool == "copilot":
+            _init_copilot(hook_command)
+        elif tool == "cursor":
+            _init_cursor(hook_command)
+        elif tool == "windsurf":
+            _init_windsurf(hook_command)
 
     # Copy rules.example.json to rules.json if it doesn't exist
     from . import config

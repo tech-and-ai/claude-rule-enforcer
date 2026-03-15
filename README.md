@@ -66,11 +66,21 @@ cre dashboard    # opens http://localhost:8766
 
 ### Hook into your AI coding tool
 
-**Option A: Auto-configure (Claude Code)**
+**Option A: Auto-configure (Claude Code, Copilot, Cursor, Windsurf)**
 ```bash
 cre init  # already done above
 ```
-This writes the hooks into `~/.claude/settings.json` automatically.
+`cre init` auto-detects which AI tools are installed and configures hooks for each:
+
+| Tool | Hook type | Config file |
+|------|-----------|-------------|
+| Claude Code | PreToolUse | `~/.claude/settings.json` |
+| GitHub Copilot | PreToolUse | `.github/hooks/cre.json` |
+| Cursor | beforeShellExecution | `~/.cursor/hooks.json` |
+| Windsurf | pre_run_command | `hooks.json` |
+| Amp | Delegate permissions | `~/.config/amp/settings.json` |
+
+For Amp, also add the MCP server: `amp mcp add cre -- python -m cre.mcp_server`
 
 **Option B: Plugin (Claude Code)**
 

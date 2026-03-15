@@ -23,12 +23,22 @@ ADAPTERS = {
 
 
 def detect_adapter(raw_input):
-    """Auto-detect which adapter to use based on input format."""
+    """Auto-detect which adapter to use based on input format.
+
+    Claude Code / Copilot: {"tool_name": "Bash", "tool_input": {"command": "..."}}
+    Cursor: {"command": "...", "cwd": "...", "hook_event_name": "beforeShellExecution"}
+    Windsurf: {"tool_info": {"command_line": "..."}, "agent_action_name": "pre_run_command"}
+    Amp delegate: AGENT_TOOL_NAME env var set
+    Generic: {"tool": "bash", "command": "..."}
+    """
     import os
     if os.environ.get("AGENT_TOOL_NAME"):
         return DelegateAdapter()
     if "tool_name" in raw_input and "tool_input" in raw_input:
         return ClaudeCodeAdapter()
+    # Cursor and Windsurf use GenericAdapter with field mapping
+    if "hook_event_name" in raw_input or "agent_action_name" in raw_input or "tool_info" in raw_input:
+        return GenericAdapter()
     return GenericAdapter()
 
 
