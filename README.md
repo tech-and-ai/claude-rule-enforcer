@@ -75,8 +75,8 @@ One set of rules. One audit trail. Every AI agent governed.
 ## Contact
 
 **Website:** [ai-cre.uk](https://ai-cre.uk)
-**Email:** leo@data4u.uk
+**Email:** cre@data4u.uk
 **Patent:** GB2604445.3
 
 CRE is proprietary software. All rights reserved.
-To discuss licensing, integration, or a product demonstration, contact us at leo@data4u.uk.
+To discuss licensing, integration, or a product demonstration, contact us at cre@data4u.uk.
