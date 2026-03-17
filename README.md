@@ -1,10 +1,6 @@
 # CRE
 
 <p align="center">
-  <img src="cre-logo.png" alt="CRE" width="200">
-</p>
-
-<p align="center">
   <strong>AI Agent Governance for the Enterprise</strong>
 </p>
 
